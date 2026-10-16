@@ -13,6 +13,8 @@ function getScene() {
 }
 
 function getSatelliteLayer(scene) {
+  const directLayer = scene?.__gevWebCoreLayers?.get?.('satellites')?.dataSource;
+  if (directLayer) return directLayer;
   return scene?.dataSources?.getByName?.('satellites')?.[0] || null;
 }
 
@@ -35,7 +37,7 @@ function syncNativeSatellitePoints(scene) {
 
   collection.removeAll();
   for (const entity of entities) {
-    if (!(entity instanceof Cesium.Entity) || !entity.gevMeta || entity.gevMeta.type !== 'SATELLITE') continue;
+    if (!entity?.gevMeta || entity.gevMeta.type !== 'SATELLITE') continue;
     const position = entity.position?.getValue?.(Cesium.JulianDate.now());
     if (!Cesium.defined(position)) continue;
 
@@ -51,7 +53,7 @@ function syncNativeSatellitePoints(scene) {
   }
 
   scene[SYNC_FLAG] = signature;
-  if (entities.length) {
+  if (collection.length) {
     console.info(`[GEV] Native satellite pick test synced ${collection.length} points`);
   }
 }
@@ -194,7 +196,7 @@ function resolveNativeScreenTarget(scene, canvasX, canvasY) {
   }
 
   return {
-    entity: best?.id instanceof Cesium.Entity ? best.id : undefined,
+    entity: best?.id?.gevMeta ? best.id : undefined,
     distance: best ? bestDistance : null,
     mode: best ? bestMode : 'NONE',
     projected: bestProjected,
