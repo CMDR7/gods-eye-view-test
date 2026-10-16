@@ -43,6 +43,33 @@
       </div>
     </aside>
 
+    <section id="targetPanel" class="panel targetPanel" hidden aria-labelledby="targetTitle">
+      <div class="panelHeader">
+        <div id="targetTitle">TARGET // INSPECTION</div>
+        <button id="targetClose" class="panelClose" type="button" aria-label="Close target panel">×</button>
+      </div>
+      <div class="targetIdentity">
+        <div id="targetType" class="targetType">UNKNOWN</div>
+        <div id="targetName" class="targetName">UNKNOWN TARGET</div>
+      </div>
+      <div class="telemetryGrid">
+        <div class="telemetryItem"><span>ID</span><strong id="targetId">—</strong></div>
+        <div class="telemetryItem"><span>POSITION</span><strong id="targetPosition">—</strong></div>
+        <div class="telemetryItem"><span>ALTITUDE</span><strong id="targetAltitude">—</strong></div>
+        <div class="telemetryItem"><span>SOURCE</span><strong id="targetSource">—</strong></div>
+        <div class="telemetryItem"><span>UPDATED</span><strong id="targetUpdated">—</strong></div>
+      </div>
+      <div id="targetDetail" class="targetDetail" hidden>
+        <span id="targetDetailLabel">DETAIL</span>
+        <strong id="targetDetailValue">—</strong>
+      </div>
+      <div class="panelActions targetActions">
+        <button id="targetFly" type="button">FLY TO</button>
+        <button id="targetTrack" type="button">TRACK</button>
+        <button id="targetClear" type="button">CLEAR</button>
+      </div>
+    </section>
+
     <section id="ionPanel" class="panel" hidden aria-labelledby="ionTitle">
       <div class="panelHeader">
         <div id="ionTitle">CESIUM ION // USER TOKEN</div>
