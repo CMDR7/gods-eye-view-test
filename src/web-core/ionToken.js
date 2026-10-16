@@ -73,7 +73,7 @@ export function clearIonToken() {
   removeStorage(window.localStorage, STORAGE_KEY);
   removeStorage(window.localStorage, PERSIST_KEY);
   removeStorage(window.sessionStorage, SESSION_KEY);
-  Ion.defaultAccessToken = undefined;
+  Ion.defaultAccessToken = '';
 }
 
 export function getIonTokenStatus() {
