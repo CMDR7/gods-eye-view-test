@@ -5,8 +5,8 @@ const TOUCH_TAP_TOLERANCE = 14;
 const TOUCH_BRIDGE_FLAG = '__gevTouchBridgeInstalled';
 const RENDER_PATCH_FLAG = '__gevSceneCapturePatched';
 
-function findGevEntity(scene, canvasX, canvasY, windowPosition) {
-  const projected = scene.__gevResolveProjectedTarget?.(canvasX, canvasY);
+function findGevEntity(scene, windowPosition) {
+  const projected = scene.__gevResolveProjectedTarget?.(windowPosition);
   if (projected) return projected;
 
   const picked = scene.pick(windowPosition, DEFAULT_PICK_SIZE, DEFAULT_PICK_SIZE);
@@ -100,28 +100,30 @@ function installTouchBridge(handler) {
     if (!wasTap) return;
 
     const rect = element.getBoundingClientRect();
-    const canvasX = event.clientX - rect.left;
-    const canvasY = event.clientY - rect.top;
-    const windowPosition = new Cesium.Cartesian2(canvasX, rect.height - canvasY);
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    // Cesium's camera/getPickRay path uses its window coordinate origin. The
+    // existing ground-focus implementation already proves this conversion is
+    // correct on the target device, so the same position is passed to the
+    // satellite ray resolver and native Cesium picking.
+    const windowPosition = new Cesium.Cartesian2(x, rect.height - y);
     const scene = element.__gevScene;
     if (!scene) return;
 
-    const entity = findGevEntity(scene, canvasX, canvasY, windowPosition);
+    const entity = findGevEntity(scene, windowPosition);
     if (entity) {
       showTouchFocus(event.clientX, event.clientY, `TARGET FOCUS // ${entity.gevMeta?.type || 'GEV'}`);
     } else {
       showTouchFocus(event.clientX, event.clientY);
     }
 
-    // Pass the resolved entity explicitly to the existing LEFT_CLICK action.
-    // main.js consumes __gevTarget before asking Cesium to perform a native pick.
     const action = handler.getInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK);
     if (typeof action === 'function') {
       action({ position: windowPosition, __gevTarget: entity });
     }
 
-    // Ground coordinates are a fallback only. A satellite/aircraft target
-    // never produces a GROUND FOCUS message once the projected resolver hits.
+    // Ground coordinates are only a fallback after the ray-space target
+    // resolver and native Cesium entity picking both return no GEV entity.
     if (!entity) {
       const groundMessage = formatGroundPosition(scene, windowPosition);
       if (groundMessage) showTouchFocus(event.clientX, event.clientY, groundMessage);
