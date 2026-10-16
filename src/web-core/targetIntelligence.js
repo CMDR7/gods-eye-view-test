@@ -1,6 +1,6 @@
 import * as satellite from 'satellite.js';
 
-const CACHE_TTL_MS = 30_000;
+const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const cache = new Map();
 let requestSerial = 0;
 let lastTargetKey = '';
@@ -64,25 +64,11 @@ async function satelliteDetails(norad) {
   const cached = cache.get(key);
   if (cached && Date.now() - cached.time < CACHE_TTL_MS) return cached.data;
 
-  const response = await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle', {
-    mode: 'cors',
-    headers: { Accept: 'text/plain' },
-  });
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  const response = await fetchJson(`https://celestrak.org/NORAD/elements/gp.php?CATNR=${encodeURIComponent(norad)}&FORMAT=JSON`);
+  const omm = Array.isArray(response) ? response[0] : response;
+  if (!omm || !omm.NORAD_CAT_ID) throw new Error('SATELLITE RECORD NOT FOUND');
 
-  const lines = (await response.text()).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  let match;
-  for (let i = 0; i + 2 < lines.length; i += 3) {
-    if (!lines[i + 1]?.startsWith('1 ') || !lines[i + 2]?.startsWith('2 ')) continue;
-    const currentNorad = lines[i + 1].slice(2, 7).trim();
-    if (currentNorad === String(norad)) {
-      match = [lines[i], lines[i + 1], lines[i + 2]];
-      break;
-    }
-  }
-  if (!match) throw new Error('TLE RECORD NOT FOUND');
-
-  const satrec = satellite.twoline2satrec(match[1], match[2]);
+  const satrec = satellite.json2satrec(omm);
   const now = new Date();
   const position = satellite.propagate(satrec, now);
   const gmst = satellite.gstime(now);
@@ -91,11 +77,14 @@ async function satelliteDetails(norad) {
     : null;
 
   const data = {
-    name: match[0],
+    name: omm.OBJECT_NAME || 'UNKNOWN SATELLITE',
     altitude: geo ? `${formatNumber(geo.height, 0)} KM` : '—',
-    inclination: Number.isFinite(Number(satrec.inclo)) ? `${formatNumber(satrec.inclo * 180 / Math.PI, 2)}°` : '—',
-    eccentricity: Number.isFinite(Number(satrec.ecco)) ? Number(satrec.ecco).toFixed(6) : '—',
-    period: Number.isFinite(Number(satrec.no)) && satrec.no > 0 ? `${formatNumber((2 * Math.PI / satrec.no) / 60, 1)} MIN` : '—',
+    inclination: Number.isFinite(Number(omm.INCLINATION)) ? `${formatNumber(omm.INCLINATION, 2)}°` : '—',
+    eccentricity: Number.isFinite(Number(omm.ECCENTRICITY)) ? Number(omm.ECCENTRICITY).toFixed(6) : '—',
+    period: Number.isFinite(Number(omm.MEAN_MOTION)) && Number(omm.MEAN_MOTION) > 0
+      ? `${formatNumber(1440 / Number(omm.MEAN_MOTION), 1)} MIN`
+      : '—',
+    epoch: omm.EPOCH || '—',
   };
   cache.set(key, { time: Date.now(), data });
   return data;
@@ -167,6 +156,7 @@ async function enrichTarget(targetKey) {
         { label: 'INCLINATION', value: data.inclination },
         { label: 'ECCENTRICITY', value: data.eccentricity },
         { label: 'ORBIT PERIOD', value: data.period },
+        { label: 'ELEMENT EPOCH', value: data.epoch },
       ]);
     }
   } catch (error) {
