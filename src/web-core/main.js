@@ -9,12 +9,14 @@ const REFRESH_MS = 60_000;
 const SATELLITE_REFRESH_MS = 2 * 60 * 60 * 1000;
 const MAX_SATELLITES = 1500;
 const ION_TERRAIN_TIMEOUT_MS = 15_000;
+const DRAWER_TRANSITION_MS = 320;
 
 const state = {
   viewer: null,
   layers: new Map(),
   timers: new Map(),
   ionTerrainEnabled: false,
+  commandPanelOpen: false,
 };
 
 applyStoredIonToken();
@@ -239,12 +241,55 @@ async function setIonTerrain(enabled) {
   }
 }
 
+function openCommandPanel() {
+  const panel = $('commandPanel');
+  const backdrop = $('commandBackdrop');
+  const toggle = $('menuToggle');
+  if (state.commandPanelOpen) return;
+  state.commandPanelOpen = true;
+  panel.hidden = false;
+  backdrop.hidden = false;
+  toggle.setAttribute('aria-expanded', 'true');
+  toggle.setAttribute('aria-label', 'Close command panel');
+  requestAnimationFrame(() => {
+    panel.classList.add('open');
+    backdrop.classList.add('open');
+  });
+}
+
+function closeCommandPanel() {
+  const panel = $('commandPanel');
+  const backdrop = $('commandBackdrop');
+  const toggle = $('menuToggle');
+  if (!state.commandPanelOpen) return;
+  state.commandPanelOpen = false;
+  panel.classList.remove('open');
+  backdrop.classList.remove('open');
+  toggle.setAttribute('aria-expanded', 'false');
+  toggle.setAttribute('aria-label', 'Open command panel');
+  window.setTimeout(() => {
+    if (!state.commandPanelOpen) {
+      panel.hidden = true;
+      backdrop.hidden = true;
+    }
+  }, DRAWER_TRANSITION_MS);
+}
+
+function addCommandPanelControls() {
+  $('menuToggle').addEventListener('click', () => {
+    state.commandPanelOpen ? closeCommandPanel() : openCommandPanel();
+  });
+  $('commandClose').addEventListener('click', closeCommandPanel);
+  $('commandBackdrop').addEventListener('click', closeCommandPanel);
+}
+
 function addIonControls() {
   const panel = $('ionPanel');
   const input = $('ionToken');
   const remember = $('ionRemember');
 
   $('ionSettings').addEventListener('click', () => {
+    closeCommandPanel();
     panel.hidden = false;
     updateIonPanelState();
     updateIonTerrainControl();
@@ -292,6 +337,7 @@ function addIonControls() {
 }
 
 function addControls() {
+  addCommandPanelControls();
   document.querySelectorAll('[data-layer]').forEach((button) => {
     button.addEventListener('click', () => {
       const id = button.dataset.layer;
@@ -318,6 +364,15 @@ function addControls() {
     );
   });
   addIonControls();
+
+  window.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    if (state.commandPanelOpen) {
+      closeCommandPanel();
+      return;
+    }
+    $('ionPanel').hidden = true;
+  });
 }
 
 async function boot() {
