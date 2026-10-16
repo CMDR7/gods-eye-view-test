@@ -41,7 +41,6 @@ uniform sampler2D colorTexture;
 uniform float mode;
 uniform float time;
 in vec2 v_textureCoordinates;
-out vec4 out_FragColor;
 
 void main() {
   vec2 uv = v_textureCoordinates;
@@ -125,7 +124,7 @@ function ensureHudOverlay() {
 function applyMode(mode, { persist = true, announce = true } = {}) {
   const normalized = MODES.has(mode) ? mode : 'normal';
   const scene = getScene();
-  const stage = ensureStage(scene);
+  const stage = normalized === 'normal' ? scene?.[STAGE_KEY] || null : ensureStage(scene);
 
   if (stage) {
     stage.uniforms.mode = normalized === 'normal' ? 0 : normalized === 'nvg' ? 1 : normalized === 'flir' ? 2 : 3;
