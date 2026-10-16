@@ -13,6 +13,7 @@ const DRAWER_TRANSITION_MS = 320;
 const DEFAULT_NAV_ALTITUDE = 15_000;
 const SATELLITE_CACHE_KEY = 'gev.celestrak.visualTle.v1';
 const SATELLITE_CACHE_TTL_MS = SATELLITE_REFRESH_MS;
+const SATELLITE_COLLECTION_KEY = '__gevSatellitePointCollection';
 
 const state = {
   viewer: null,
@@ -53,6 +54,10 @@ function setLayerEnabled(id, enabled) {
   if (!layer) return;
   layer.enabled = enabled;
   layer.dataSource.show = enabled;
+  if (id === 'satellites') {
+    const collection = state.viewer.scene[SATELLITE_COLLECTION_KEY];
+    if (collection) collection.show = enabled;
+  }
   document.querySelector(`[data-layer="${id}"]`)?.classList.toggle('active', enabled);
 }
 
@@ -92,6 +97,36 @@ function addPoint(layer, lon, lat, height, label, color, pixelSize = 7, metadata
   };
   entity.gevVisual = { color, pixelSize };
   return entity;
+}
+
+function syncSatellitePoints(layer) {
+  const scene = state.viewer.scene;
+  let collection = scene[SATELLITE_COLLECTION_KEY];
+  if (!collection) {
+    collection = scene.primitives.add(new Cesium.PointPrimitiveCollection());
+    scene[SATELLITE_COLLECTION_KEY] = collection;
+  }
+
+  collection.removeAll();
+  collection.show = layer.enabled;
+
+  for (const entity of layer.dataSource.entities.values) {
+    if (!entity?.gevMeta || entity.gevMeta.type !== 'SATELLITE') continue;
+    const position = entity.position?.getValue(Cesium.JulianDate.now());
+    if (!Cesium.defined(position)) continue;
+    const point = collection.add({
+      position,
+      pixelSize: entity.gevVisual?.pixelSize || 7,
+      color: entity.gevVisual?.color || Cesium.Color.LIME,
+      outlineColor: Cesium.Color.BLACK,
+      outlineWidth: 1,
+      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      id: entity,
+    });
+    entity.__gevSatellitePoint = point;
+  }
+
+  scene.requestRender();
 }
 
 async function fetchJson(url, options = {}) {
@@ -163,9 +198,7 @@ async function loadSatellites() {
       mode: 'cors',
       headers: { Accept: 'text/plain' },
     });
-    if (!response.ok) {
-      throw new Error(`CELESTRAK ${response.status} ${response.statusText}`);
-    }
+    if (!response.ok) throw new Error(`CELESTRAK ${response.status} ${response.statusText}`);
     text = await response.text();
     try {
       localStorage.setItem(SATELLITE_CACHE_KEY, JSON.stringify({ timestamp: Date.now(), text }));
@@ -202,6 +235,7 @@ async function loadSatellites() {
     }
   }
 
+  syncSatellitePoints(layer);
   if (!count) throw new Error('NO VALID SATELLITE POSITIONS');
   const cacheLabel = cacheAge > 0 ? ` // CACHE ${Math.round(cacheAge / 60000)}M` : ' // LIVE';
   setStatus(`SATELLITES: ${count} objects${cacheLabel}`, 'ok');
@@ -227,48 +261,38 @@ function schedule(id, loader, interval) {
   refreshLayer(id, loader);
 }
 
-function focusHome() {
-  state.viewer.camera.flyHome(1.2);
-}
-
-function formatNumber(value, digits = 1) {
-  return Number.isFinite(Number(value)) ? Number(value).toLocaleString(undefined, { maximumFractionDigits: digits }) : '—';
-}
-
-function formatCoordinate(value, positive, negative) {
-  if (!Number.isFinite(Number(value))) return '—';
-  const numeric = Number(value);
-  return `${Math.abs(numeric).toFixed(4)}° ${numeric >= 0 ? positive : negative}`;
-}
-
-function formatUpdated(value) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleTimeString([], { hour12: false }) + ' UTC';
-}
-
-function setTargetField(id, value) {
-  const el = $(id);
-  if (el) el.textContent = value ?? '—';
-}
-
+function focusHome() { state.viewer.camera.flyHome(1.2); }
+function formatNumber(value, digits = 1) { return Number.isFinite(Number(value)) ? Number(value).toLocaleString(undefined, { maximumFractionDigits: digits }) : '—'; }
+function formatCoordinate(value, positive, negative) { if (!Number.isFinite(Number(value))) return '—'; const numeric = Number(value); return `${Math.abs(numeric).toFixed(4)}° ${numeric >= 0 ? positive : negative}`; }
+function formatUpdated(value) { if (!value) return '—'; const date = new Date(value); if (Number.isNaN(date.getTime())) return '—'; return date.toLocaleTimeString([], { hour12: false }) + ' UTC'; }
+function setTargetField(id, value) { const el = $(id); if (el) el.textContent = value ?? '—'; }
 function restoreSelectedVisual(entity) {
   if (!entity?.point || !entity.gevVisual) return;
   entity.point.color = entity.gevVisual.color;
   entity.point.pixelSize = entity.gevVisual.pixelSize;
   entity.point.outlineColor = Cesium.Color.BLACK;
   entity.point.outlineWidth = 1;
+  if (entity.__gevSatellitePoint) {
+    entity.__gevSatellitePoint.color = entity.gevVisual.color;
+    entity.__gevSatellitePoint.pixelSize = entity.gevVisual.pixelSize;
+    entity.__gevSatellitePoint.outlineColor = Cesium.Color.BLACK;
+    entity.__gevSatellitePoint.outlineWidth = 1;
+  }
 }
-
 function applySelectedVisual(entity) {
-  if (!entity?.point) return;
-  entity.point.color = Cesium.Color.WHITE;
-  entity.point.pixelSize = Math.max(Number(entity.gevVisual?.pixelSize || 6) + 4, 10);
-  entity.point.outlineColor = Cesium.Color.CYAN;
-  entity.point.outlineWidth = 2;
+  if (entity?.point) {
+    entity.point.color = Cesium.Color.WHITE;
+    entity.point.pixelSize = Math.max(Number(entity.gevVisual?.pixelSize || 6) + 4, 10);
+    entity.point.outlineColor = Cesium.Color.CYAN;
+    entity.point.outlineWidth = 2;
+  }
+  if (entity?.__gevSatellitePoint) {
+    entity.__gevSatellitePoint.color = Cesium.Color.WHITE;
+    entity.__gevSatellitePoint.pixelSize = Math.max(Number(entity.gevVisual?.pixelSize || 6) + 4, 10);
+    entity.__gevSatellitePoint.outlineColor = Cesium.Color.CYAN;
+    entity.__gevSatellitePoint.outlineWidth = 2;
+  }
 }
-
 function updateTargetPanel(entity) {
   const meta = entity?.gevMeta || {};
   const position = entity?.position?.getValue(Cesium.JulianDate.now());
@@ -283,27 +307,14 @@ function updateTargetPanel(entity) {
   setTargetField('targetAltitude', `${formatNumber(altitude, 0)} M`);
   setTargetField('targetSource', meta.source || '—');
   setTargetField('targetUpdated', formatUpdated(meta.updated));
-
   const detail = $('targetDetail');
-  if (meta.type === 'AIRCRAFT') {
-    detail.hidden = false;
-    setTargetField('targetDetailLabel', 'CALLSIGN');
-    setTargetField('targetDetailValue', meta.callsign || meta.name || '—');
-  } else if (meta.type === 'SATELLITE') {
-    detail.hidden = false;
-    setTargetField('targetDetailLabel', 'NORAD');
-    setTargetField('targetDetailValue', meta.norad || meta.id || '—');
-  } else if (meta.type === 'EARTHQUAKE') {
-    detail.hidden = false;
-    setTargetField('targetDetailLabel', 'MAG / DEPTH');
-    setTargetField('targetDetailValue', `M${formatNumber(meta.magnitude, 1)} / ${formatNumber(meta.depth, 1)} KM`);
-  } else {
-    detail.hidden = true;
-  }
+  if (meta.type === 'AIRCRAFT') { detail.hidden = false; setTargetField('targetDetailLabel', 'CALLSIGN'); setTargetField('targetDetailValue', meta.callsign || meta.name || '—'); }
+  else if (meta.type === 'SATELLITE') { detail.hidden = false; setTargetField('targetDetailLabel', 'NORAD'); setTargetField('targetDetailValue', meta.norad || meta.id || '—'); }
+  else if (meta.type === 'EARTHQUAKE') { detail.hidden = false; setTargetField('targetDetailLabel', 'MAG / DEPTH'); setTargetField('targetDetailValue', `M${formatNumber(meta.magnitude, 1)} / ${formatNumber(meta.depth, 1)} KM`); }
+  else detail.hidden = true;
   $('targetPanel').hidden = false;
   $('targetTrack').textContent = state.viewer.trackedEntity === entity ? 'UNTRACK' : 'TRACK';
 }
-
 function clearSelectedTarget() {
   const previous = state.selectedEntity;
   if (previous) restoreSelectedVisual(previous);
@@ -313,13 +324,9 @@ function clearSelectedTarget() {
   if ($('targetPanel')) $('targetPanel').hidden = true;
   state.viewer?.scene.requestRender();
 }
-
 function selectTarget(entity) {
   if (!entity?.gevMeta) return;
-  if (state.selectedEntity === entity) {
-    updateTargetPanel(entity);
-    return;
-  }
+  if (state.selectedEntity === entity) { updateTargetPanel(entity); return; }
   if (state.selectedEntity) restoreSelectedVisual(state.selectedEntity);
   if (state.viewer.trackedEntity) state.viewer.trackedEntity = undefined;
   state.selectedEntity = entity;
@@ -330,7 +337,6 @@ function selectTarget(entity) {
   setStatus(`TARGET SELECTED // ${entity.gevMeta.type}`, 'ok');
   state.viewer.scene.requestRender();
 }
-
 function pickEntity(windowPosition, directTarget) {
   if (directTarget?.gevMeta) return directTarget;
   const picked = state.viewer.scene.pick(windowPosition);
@@ -338,223 +344,75 @@ function pickEntity(windowPosition, directTarget) {
   const id = Cesium.defaultValue(picked.id, picked.primitive?.id);
   return id instanceof Cesium.Entity && id.gevMeta ? id : undefined;
 }
-
 function addTargetInteraction() {
   state.viewer.screenSpaceEventHandler.setInputAction((movement) => {
     const entity = pickEntity(movement.position, movement.__gevTarget);
-    if (entity) selectTarget(entity);
-    else clearSelectedTarget();
+    if (entity) selectTarget(entity); else clearSelectedTarget();
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
   state.viewer.screenSpaceEventHandler.setInputAction((movement) => {
     const entity = pickEntity(movement.endPosition);
     state.viewer.canvas.style.cursor = entity ? 'pointer' : '';
   }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 }
-
 async function flyToSelectedTarget() {
-  const entity = state.selectedEntity;
-  if (!entity) return;
-  state.viewer.trackedEntity = undefined;
-  setStatus('NAVIGATING TO TARGET…');
-  const completed = await state.viewer.flyTo(entity, {
-    duration: 1.0,
-    offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-35), 0),
-  });
+  const entity = state.selectedEntity; if (!entity) return;
+  state.viewer.trackedEntity = undefined; setStatus('NAVIGATING TO TARGET…');
+  const completed = await state.viewer.flyTo(entity, { duration: 1.0, offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-35), 0) });
   if (completed) setStatus(`TARGET LOCKED // ${entity.gevMeta?.type || 'GEV'}`, 'ok');
 }
-
 function toggleTargetTracking() {
-  const entity = state.selectedEntity;
-  if (!entity) return;
-  if (state.viewer.trackedEntity === entity) {
-    state.viewer.trackedEntity = undefined;
-    $('targetTrack').textContent = 'TRACK';
-    setStatus('TARGET TRACKING OFF');
-    return;
-  }
-  state.viewer.trackedEntity = entity;
-  $('targetTrack').textContent = 'UNTRACK';
-  setStatus(`TRACKING // ${entity.gevMeta?.type || 'GEV'}`, 'ok');
+  const entity = state.selectedEntity; if (!entity) return;
+  if (state.viewer.trackedEntity === entity) { state.viewer.trackedEntity = undefined; $('targetTrack').textContent = 'TRACK'; setStatus('TARGET TRACKING OFF'); return; }
+  state.viewer.trackedEntity = entity; $('targetTrack').textContent = 'UNTRACK'; setStatus(`TRACKING // ${entity.gevMeta?.type || 'GEV'}`, 'ok');
 }
-
-function copyTargetCoordinates() {
-  const value = $('targetPosition')?.textContent || '';
-  if (!value || value === '—') return;
-  navigator.clipboard?.writeText(value).then(() => setStatus('TARGET COORDINATES COPIED', 'ok')).catch(() => setStatus('CLIPBOARD UNAVAILABLE', 'warn'));
-}
-
 function toggleCommandPanel(force) {
-  const panel = $('commandPanel');
-  const backdrop = $('commandBackdrop');
-  const menu = $('menuToggle');
-  if (!panel) return;
-
-  const open = typeof force === 'boolean' ? force : !state.commandPanelOpen;
-  state.commandPanelOpen = open;
-
-  if (open) {
-    panel.hidden = false;
-    if (backdrop) backdrop.hidden = false;
-    requestAnimationFrame(() => {
-      panel.classList.add('open');
-      backdrop?.classList.add('open');
-    });
-  } else {
-    panel.classList.remove('open');
-    backdrop?.classList.remove('open');
-    window.setTimeout(() => {
-      if (!state.commandPanelOpen) {
-        panel.hidden = true;
-        if (backdrop) backdrop.hidden = true;
-      }
-    }, DRAWER_TRANSITION_MS);
-  }
-
-  panel.setAttribute('aria-hidden', String(!open));
-  menu?.setAttribute('aria-expanded', String(open));
+  const panel = $('commandPanel'); const backdrop = $('commandBackdrop'); const menu = $('menuToggle'); if (!panel) return;
+  const open = typeof force === 'boolean' ? force : !state.commandPanelOpen; state.commandPanelOpen = open;
+  if (open) { panel.hidden = false; if (backdrop) backdrop.hidden = false; requestAnimationFrame(() => { panel.classList.add('open'); backdrop?.classList.add('open'); }); }
+  else { panel.classList.remove('open'); backdrop?.classList.remove('open'); window.setTimeout(() => { if (!state.commandPanelOpen) { panel.hidden = true; if (backdrop) backdrop.hidden = true; } }, DRAWER_TRANSITION_MS); }
+  panel.setAttribute('aria-hidden', String(!open)); menu?.setAttribute('aria-expanded', String(open));
 }
-
 function addCoordinateNavigation() {
   const parse = () => {
-    const lat = Number.parseFloat($('coordinateLat').value);
-    const lon = Number.parseFloat($('coordinateLon').value);
-    const altRaw = $('coordinateAlt').value.trim();
-    const altitude = altRaw === '' ? DEFAULT_NAV_ALTITUDE : Number.parseFloat(altRaw);
+    const lat = Number.parseFloat($('coordinateLat').value); const lon = Number.parseFloat($('coordinateLon').value); const altRaw = $('coordinateAlt').value.trim(); const altitude = altRaw === '' ? DEFAULT_NAV_ALTITUDE : Number.parseFloat(altRaw);
     if (!Number.isFinite(lat) || lat < -90 || lat > 90) return { error: 'LATITUDE MUST BE BETWEEN -90 AND 90' };
     if (!Number.isFinite(lon) || lon < -180 || lon > 180) return { error: 'LONGITUDE MUST BE BETWEEN -180 AND 180' };
     if (!Number.isFinite(altitude) || altitude < 0) return { error: 'ALTITUDE MUST BE ZERO OR GREATER' };
     return { lat, lon, altitude };
   };
-  const fly = () => {
-    const result = parse();
-    if (result.error) {
-      setStatus(`NAVIGATION INPUT ERROR // ${result.error}`, 'warn');
-      return;
-    }
-    state.viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(result.lon, result.lat, result.altitude),
-      orientation: { heading: 0, pitch: Cesium.Math.toRadians(-35), roll: 0 },
-      duration: 1.5,
-    });
-    setStatus(`NAVIGATION LOCK // ${result.lat.toFixed(5)} ${result.lon.toFixed(5)}`, 'ok');
-  };
-  $('coordinateFly')?.addEventListener('click', fly);
-  $('coordinateAlt')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') fly(); });
-  $('coordinateLat')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') fly(); });
-  $('coordinateLon')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') fly(); });
-  $('coordinateMyLocation')?.addEventListener('click', () => {
-    if (!navigator.geolocation) {
-      setStatus('LOCATION API UNAVAILABLE', 'warn');
-      return;
-    }
-    navigator.geolocation.getCurrentPosition((position) => {
-      $('coordinateLat').value = position.coords.latitude.toFixed(6);
-      $('coordinateLon').value = position.coords.longitude.toFixed(6);
-      setStatus('CURRENT LOCATION ACQUIRED', 'ok');
-    }, () => setStatus('CURRENT LOCATION UNAVAILABLE', 'warn'), { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+  const fly = () => { const result = parse(); if (result.error) { setStatus(`NAVIGATION INPUT ERROR // ${result.error}`, 'warn'); return; } state.viewer.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(result.lon, result.lat, result.altitude), orientation: { heading: 0, pitch: Cesium.Math.toRadians(-35), roll: 0 }, duration: 1.5 }); setStatus(`NAVIGATION LOCK // ${result.lat.toFixed(5)} ${result.lon.toFixed(5)}`, 'ok'); };
+  $('coordinateFly')?.addEventListener('click', fly); $('coordinateAlt')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') fly(); }); $('coordinateLat')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') fly(); }); $('coordinateLon')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') fly(); });
+  $('coordinateMyLocation')?.addEventListener('click', () => { if (!navigator.geolocation) { setStatus('LOCATION API UNAVAILABLE', 'warn'); return; } navigator.geolocation.getCurrentPosition((position) => { $('coordinateLat').value = position.coords.latitude.toFixed(6); $('coordinateLon').value = position.coords.longitude.toFixed(6); setStatus('CURRENT LOCATION ACQUIRED', 'ok'); }, () => setStatus('CURRENT LOCATION UNAVAILABLE', 'warn'), { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
   });
-  $('coordinateCopy')?.addEventListener('click', () => {
-    const value = `${$('coordinateLat').value}, ${$('coordinateLon').value}`;
-    navigator.clipboard?.writeText(value).then(() => setStatus('COORDINATES COPIED', 'ok')).catch(() => setStatus('CLIPBOARD UNAVAILABLE', 'warn'));
-  });
+  $('coordinateCopy')?.addEventListener('click', () => { const value = `${$('coordinateLat').value}, ${$('coordinateLon').value}`; navigator.clipboard?.writeText(value).then(() => setStatus('COORDINATES COPIED', 'ok')).catch(() => setStatus('CLIPBOARD UNAVAILABLE', 'warn')); });
 }
-
 function addLayerControls() {
-  const definitions = [
-    ['earthquakes', 'EARTHQUAKES', Cesium.Color.YELLOW, loadEarthquakes, REFRESH_MS],
-    ['aircraft', 'AIRCRAFT', Cesium.Color.CYAN, loadAircraft, REFRESH_MS],
-    ['satellites', 'SATELLITES', Cesium.Color.LIME, loadSatellites, SATELLITE_REFRESH_MS],
-  ];
+  const definitions = [['earthquakes', 'EARTHQUAKES', Cesium.Color.YELLOW, loadEarthquakes, REFRESH_MS], ['aircraft', 'AIRCRAFT', Cesium.Color.CYAN, loadAircraft, REFRESH_MS], ['satellites', 'SATELLITES', Cesium.Color.LIME, loadSatellites, SATELLITE_REFRESH_MS]];
   for (const [id, name, color, loader, interval] of definitions) {
     addLayer(id, name, color);
-    document.querySelector(`[data-layer="${id}"]`)?.addEventListener('click', () => {
-      const layer = state.layers.get(id);
-      const enabled = !layer.enabled;
-      setLayerEnabled(id, enabled);
-      if (enabled) schedule(id, loader, interval);
-      else clearLayer(id);
-    });
+    document.querySelector(`[data-layer="${id}"]`)?.addEventListener('click', () => { const layer = state.layers.get(id); const enabled = !layer.enabled; setLayerEnabled(id, enabled); if (enabled) schedule(id, loader, interval); else clearLayer(id); });
   }
 }
-
 async function initialize() {
-  const viewer = new Cesium.Viewer('globe', {
-    animation: false,
-    timeline: false,
-    geocoder: false,
-    homeButton: false,
-    sceneModePicker: false,
-    navigationHelpButton: false,
-    fullscreenButton: false,
-    selectionIndicator: false,
-    infoBox: false,
-    baseLayerPicker: false,
-    terrainProvider: undefined,
-  });
+  const viewer = new Cesium.Viewer('globe', { animation: false, timeline: false, geocoder: false, homeButton: false, sceneModePicker: false, navigationHelpButton: false, fullscreenButton: false, selectionIndicator: false, infoBox: false, baseLayerPicker: false, terrainProvider: undefined });
   state.viewer = viewer;
   viewer.scene.__gevWebCoreLayers = state.layers;
   viewer.scene.globe.depthTestAgainstTerrain = false;
   viewer.scene.requestRenderMode = false;
   viewer.imageryLayers.addImageryProvider(createOsmImagery());
   viewer.camera.setView({ destination: Cesium.Cartesian3.fromDegrees(10, 50, 3_500_000), orientation: { heading: 0, pitch: Cesium.Math.toRadians(-60), roll: 0 } });
-
-  addLayerControls();
-  addTargetInteraction();
-  addCoordinateNavigation();
-  $('targetFly')?.addEventListener('click', flyToSelectedTarget);
-  $('targetTrack')?.addEventListener('click', toggleTargetTracking);
-  $('targetClear')?.addEventListener('click', clearSelectedTarget);
-  $('targetCopy')?.addEventListener('click', copyTargetCoordinates);
-  $('menuToggle')?.addEventListener('click', () => toggleCommandPanel());
-  $('commandClose')?.addEventListener('click', () => toggleCommandPanel(false));
-  $('commandBackdrop')?.addEventListener('click', () => toggleCommandPanel(false));
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') toggleCommandPanel(false);
-  });
-  document.addEventListener('click', (event) => {
-    const panel = $('commandPanel');
-    if (state.commandPanelOpen && panel && !panel.contains(event.target) && event.target !== $('menuToggle')) toggleCommandPanel(false);
-  });
-
+  addLayerControls(); addTargetInteraction(); addCoordinateNavigation();
+  $('targetFly')?.addEventListener('click', flyToSelectedTarget); $('targetTrack')?.addEventListener('click', toggleTargetTracking); $('targetClear')?.addEventListener('click', clearSelectedTarget); $('menuToggle')?.addEventListener('click', () => toggleCommandPanel()); $('commandClose')?.addEventListener('click', () => toggleCommandPanel(false)); $('commandBackdrop')?.addEventListener('click', () => toggleCommandPanel(false));
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') toggleCommandPanel(false); });
+  document.addEventListener('click', (event) => { const panel = $('commandPanel'); if (state.commandPanelOpen && panel && !panel.contains(event.target) && event.target !== $('menuToggle')) toggleCommandPanel(false); });
   try {
     const ionStatus = getIonTokenStatus();
     if (ionStatus.configured) {
       const terrainPromise = Cesium.createWorldTerrainAsync?.();
-      if (terrainPromise) {
-        const terrainProvider = await Promise.race([
-          terrainPromise,
-          new Promise((_, reject) => setTimeout(() => reject(new Error('ION TERRAIN TIMEOUT')), ION_TERRAIN_TIMEOUT_MS)),
-        ]);
-        viewer.terrainProvider = terrainProvider;
-        state.ionTerrainEnabled = true;
-        setStatus('WORLD TERRAIN ONLINE // CESIUM ION', 'ok');
-      }
-    } else {
-      setStatus('WEB CORE READY // ION TOKEN NOT CONFIGURED', 'warn');
-    }
-  } catch (error) {
-    console.warn('[GEV] Ion terrain unavailable', error);
-    setStatus('ION TERRAIN ERROR // 403 ACCESS DENIED', 'warn');
-  }
-
-  $('ionSave')?.addEventListener('click', () => {
-    try {
-      saveIonToken($('ionToken').value, $('ionPersist')?.checked !== false);
-      setStatus('ION TOKEN SAVED // RELOADING TERRAIN', 'ok');
-      location.reload();
-    } catch (error) {
-      setStatus(`ION TOKEN ERROR // ${error.message}`, 'warn');
-    }
-  });
-  $('ionClear')?.addEventListener('click', () => {
-    clearIonToken();
-    setStatus('ION TOKEN CLEARED // RELOADING', 'ok');
-    location.reload();
-  });
+      if (terrainPromise) { const terrainProvider = await Promise.race([terrainPromise, new Promise((_, reject) => setTimeout(() => reject(new Error('ION TERRAIN TIMEOUT')), ION_TERRAIN_TIMEOUT_MS))]); viewer.terrainProvider = terrainProvider; state.ionTerrainEnabled = true; setStatus('WORLD TERRAIN ONLINE // CESIUM ION', 'ok'); }
+    } else setStatus('WEB CORE READY // ION TOKEN NOT CONFIGURED', 'warn');
+  } catch (error) { console.warn('[GEV] Ion terrain unavailable', error); setStatus('ION TERRAIN ERROR // 403 ACCESS DENIED', 'warn'); }
+  $('ionSave')?.addEventListener('click', () => { try { saveIonToken($('ionToken').value, $('ionPersist')?.checked !== false); setStatus('ION TOKEN SAVED // RELOADING TERRAIN', 'ok'); location.reload(); } catch (error) { setStatus(`ION TOKEN ERROR // ${error.message}`, 'warn'); } });
+  $('ionClear')?.addEventListener('click', () => { clearIonToken(); setStatus('ION TOKEN CLEARED // RELOADING', 'ok'); location.reload(); });
 }
-
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initialize, { once: true });
-} else {
-  initialize();
-}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize, { once: true }); else initialize();
