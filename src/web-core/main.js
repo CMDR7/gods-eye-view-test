@@ -385,11 +385,33 @@ function copyTargetCoordinates() {
 
 function toggleCommandPanel(force) {
   const panel = $('commandPanel');
+  const backdrop = $('commandBackdrop');
+  const menu = $('menuToggle');
   if (!panel) return;
-  state.commandPanelOpen = typeof force === 'boolean' ? force : !state.commandPanelOpen;
-  panel.classList.toggle('open', state.commandPanelOpen);
-  panel.setAttribute('aria-hidden', String(!state.commandPanelOpen));
-  $('menuToggle')?.setAttribute('aria-expanded', String(state.commandPanelOpen));
+
+  const open = typeof force === 'boolean' ? force : !state.commandPanelOpen;
+  state.commandPanelOpen = open;
+
+  if (open) {
+    panel.hidden = false;
+    if (backdrop) backdrop.hidden = false;
+    requestAnimationFrame(() => {
+      panel.classList.add('open');
+      backdrop?.classList.add('open');
+    });
+  } else {
+    panel.classList.remove('open');
+    backdrop?.classList.remove('open');
+    window.setTimeout(() => {
+      if (!state.commandPanelOpen) {
+        panel.hidden = true;
+        if (backdrop) backdrop.hidden = true;
+      }
+    }, DRAWER_TRANSITION_MS);
+  }
+
+  panel.setAttribute('aria-hidden', String(!open));
+  menu?.setAttribute('aria-expanded', String(open));
 }
 
 function addCoordinateNavigation() {
@@ -484,6 +506,7 @@ async function initialize() {
   $('targetCopy')?.addEventListener('click', copyTargetCoordinates);
   $('menuToggle')?.addEventListener('click', () => toggleCommandPanel());
   $('commandClose')?.addEventListener('click', () => toggleCommandPanel(false));
+  $('commandBackdrop')?.addEventListener('click', () => toggleCommandPanel(false));
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') toggleCommandPanel(false);
   });
