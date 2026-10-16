@@ -1,6 +1,7 @@
 import * as Cesium from 'cesium';
 import * as satellite from 'satellite.js';
 import { createOsmImagery } from '../maps/imagery.js';
+import { applyStoredIonToken, clearIonToken, getIonTokenStatus, saveIonToken } from './ionToken.js';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import './style.css';
 
@@ -13,6 +14,8 @@ const state = {
   layers: new Map(),
   timers: new Map(),
 };
+
+applyStoredIonToken();
 
 const $ = (id) => document.getElementById(id);
 
@@ -149,6 +152,54 @@ function focusHome() {
   state.viewer.camera.flyHome(1.2);
 }
 
+function updateIonPanelState() {
+  const status = getIonTokenStatus();
+  const stateEl = $('ionState');
+  stateEl.textContent = status.configured
+    ? status.persisted ? 'USER TOKEN CONFIGURED // DEVICE STORAGE' : 'USER TOKEN CONFIGURED // SESSION ONLY'
+    : 'NO USER TOKEN CONFIGURED';
+  stateEl.dataset.type = status.configured ? 'ok' : 'warn';
+}
+
+function addIonControls() {
+  const panel = $('ionPanel');
+  const input = $('ionToken');
+  const remember = $('ionRemember');
+
+  $('ionSettings').addEventListener('click', () => {
+    panel.hidden = false;
+    updateIonPanelState();
+    input.focus();
+  });
+
+  $('ionClose').addEventListener('click', () => {
+    panel.hidden = true;
+  });
+
+  $('ionConnect').addEventListener('click', () => {
+    try {
+      saveIonToken(input.value, remember.checked);
+      input.value = '';
+      updateIonPanelState();
+      setStatus('CESIUM ION TOKEN SAVED — RELOADING…', 'ok');
+      window.setTimeout(() => window.location.reload(), 250);
+    } catch (error) {
+      updateIonPanelState();
+      setStatus(error.message, 'warn');
+    }
+  });
+
+  $('ionClear').addEventListener('click', () => {
+    clearIonToken();
+    input.value = '';
+    updateIonPanelState();
+    setStatus('CESIUM ION TOKEN CLEARED — RELOADING…', 'ok');
+    window.setTimeout(() => window.location.reload(), 250);
+  });
+
+  updateIonPanelState();
+}
+
 function addControls() {
   document.querySelectorAll('[data-layer]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -175,6 +226,7 @@ function addControls() {
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 },
     );
   });
+  addIonControls();
 }
 
 async function boot() {
@@ -207,7 +259,8 @@ async function boot() {
   addLayer('earthquakes', 'EARTHQUAKES', Cesium.Color.ORANGE);
   addControls();
   focusHome();
-  setStatus('READY — NO BACKEND', 'ok');
+  const ionStatus = getIonTokenStatus();
+  setStatus(ionStatus.configured ? 'READY — CESIUM ION USER TOKEN' : 'READY — NO BACKEND', 'ok');
 }
 
 boot().catch((error) => {
