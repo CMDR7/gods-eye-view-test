@@ -1,0 +1,27 @@
+/* Web Core View System: additive styles only. Existing core UI remains untouched. */
+.visualPanel { top: 86px; }
+.visualSubtitle { margin-top: 4px; font: 500 8px/1.2 'Orbitron', sans-serif; letter-spacing: .08em; color: var(--gev-muted); }
+.visualSection { margin-top: 13px; }
+.visualSectionTitle { margin-bottom: 7px; font: 600 8px/1 'Rajdhani', sans-serif; letter-spacing: .16em; color: #72dfff; }
+.visualGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.visualGrid button { min-height: 40px; padding: 8px; display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 9px; }
+.visualGrid button.active { color: #e9fcff; border-color: rgba(0,220,255,.86); background: rgba(0,100,130,.34); box-shadow: inset 0 1px 0 rgba(190,245,255,.25), 0 0 15px rgba(0,220,255,.18); }
+.visualDot { width: 5px; height: 5px; flex: 0 0 5px; border: 1px solid currentColor; border-radius: 50%; box-shadow: 0 0 5px currentColor; opacity: .75; }
+.visualGrid button.active .visualDot { background: currentColor; opacity: 1; }
+
+/* HUD layout modes are deliberately additive and do not touch Cesium/data state. */
+html[data-gev-hud="operator"] #brand { left: auto; right: 76px; }
+html[data-gev-hud="operator"] #status { left: auto; right: 14px; bottom: 58px; text-align: right; }
+html[data-gev-hud="minimal"] #brand { padding: 7px 9px; opacity: .62; font-size: 9px; }
+html[data-gev-hud="minimal"] #status { padding: 5px 7px; opacity: .55; font-size: 8px; border-color: rgba(255,255,255,.09); }
+html[data-gev-hud="minimal"] .menuToggle { opacity: .72; }
+html[data-gev-hud="cyber"] #brand { border-radius: 0; border-color: rgba(150,0,255,.48); color: #f0ddff; box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 0 18px rgba(150,0,255,.12); }
+html[data-gev-hud="cyber"] #status { border-radius: 0; border-color: rgba(150,0,255,.38); color: #ead9ff; box-shadow: 0 0 16px rgba(150,0,255,.08); }
+html[data-gev-hud="cyber"] button::before { background: rgba(180,80,255,.6); box-shadow: 0 0 8px rgba(180,80,255,.38); }
+html[data-gev-hud="cyber"] button:hover, html[data-gev-hud="cyber"] button.active { border-color: rgba(190,110,255,.82); background: rgba(90,20,125,.28); box-shadow: inset 0 1px 0 rgba(235,210,255,.2), 0 0 15px rgba(170,70,255,.15); }
+html[data-gev-hud="cyber"] .commandPanel, html[data-gev-hud="cyber"] .panel { border-color: rgba(170,80,255,.38); }
+
+@media (max-width: 560px) {
+  .visualPanel { top: 70px; }
+  .visualGrid button { min-height: 38px; font-size: 8px; }
+}
