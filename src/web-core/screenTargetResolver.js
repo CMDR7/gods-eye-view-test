@@ -1,7 +1,6 @@
 import * as Cesium from 'cesium';
 
 const PATCH_FLAG = '__gevScreenTargetResolverPatched';
-const SET_ACTION_FLAG = '__gevScreenTargetActionPatched';
 const ENTITY_REGISTRY = new Set();
 const DEFAULT_RADIUS_PX = 34;
 const SATELLITE_RADIUS_PX = 44;
@@ -11,7 +10,10 @@ const OCCLUSION_ALTITUDE_M = 50_000;
 const OCCLUSION_TOLERANCE_M = 5_000;
 
 function isGevEntity(entity) {
-  return entity instanceof Cesium.Entity && Boolean(entity.gevMeta) && entity.show !== false && entity.isShowing !== false;
+  return entity instanceof Cesium.Entity
+    && Boolean(entity.gevMeta)
+    && entity.show !== false
+    && entity.isShowing !== false;
 }
 
 function registerEntity(entity) {
@@ -81,7 +83,11 @@ function resolveProjectedTarget(scene, windowPosition) {
     }
     if (!Cesium.defined(worldPosition)) continue;
 
-    const screenPosition = Cesium.SceneTransforms.worldToWindowCoordinates(scene, worldPosition, projected);
+    const screenPosition = Cesium.SceneTransforms.worldToWindowCoordinates(
+      scene,
+      worldPosition,
+      projected,
+    );
     if (!Cesium.defined(screenPosition)) continue;
 
     const dx = screenPosition.x - windowPosition.x;
@@ -100,6 +106,14 @@ function resolveProjectedTarget(scene, windowPosition) {
   return best;
 }
 
+// Expose a deterministic resolver for the mobile touch bridge. This bypasses
+// WebGL primitive picking for high-altitude point entities while leaving the
+// rendered Cesium points unchanged.
+function installSceneResolver(scene) {
+  if (!scene) return;
+  scene.__gevResolveProjectedTarget = (windowPosition) => resolveProjectedTarget(scene, windowPosition);
+}
+
 const originalPick = Cesium.Scene.prototype.pick;
 if (originalPick && !originalPick[PATCH_FLAG]) {
   const projectedPick = function projectedTargetPick(windowPosition, width, height) {
@@ -109,46 +123,14 @@ if (originalPick && !originalPick[PATCH_FLAG]) {
       if (pickedId instanceof Cesium.Entity && pickedId.gevMeta) return picked;
     }
 
-    if (this.__gevResolveProjectedPick) {
-      const entity = resolveProjectedTarget(this, windowPosition);
-      if (entity) return { id: entity, primitive: entity };
-    }
-
+    const entity = this.__gevResolveProjectedTarget?.(windowPosition);
+    if (entity) return { id: entity, primitive: entity };
     return picked;
   };
 
   projectedPick[PATCH_FLAG] = true;
   projectedPick.__gevOriginalPick = originalPick;
   Cesium.Scene.prototype.pick = projectedPick;
-}
-
-const originalSetInputAction = Cesium.ScreenSpaceEventHandler.prototype.setInputAction;
-if (originalSetInputAction && !originalSetInputAction[SET_ACTION_FLAG]) {
-  const wrappedSetInputAction = function wrappedSetInputAction(action, type, modifier) {
-    if (type !== Cesium.ScreenSpaceEventType.LEFT_CLICK || modifier !== undefined || typeof action !== 'function') {
-      return originalSetInputAction.call(this, action, type, modifier);
-    }
-
-    const handler = this;
-    const element = handler._element;
-    const wrappedAction = function projectedTargetAction(movement) {
-      const scene = element?.__gevScene;
-      if (!scene || !movement?.position) return action(movement);
-
-      scene.__gevResolveProjectedPick = true;
-      try {
-        return action(movement);
-      } finally {
-        scene.__gevResolveProjectedPick = false;
-      }
-    };
-
-    wrappedAction.__gevOriginalAction = action;
-    return originalSetInputAction.call(handler, wrappedAction, type, modifier);
-  };
-
-  wrappedSetInputAction[SET_ACTION_FLAG] = true;
-  Cesium.ScreenSpaceEventHandler.prototype.setInputAction = wrappedSetInputAction;
 }
 
 const originalAdd = Cesium.EntityCollection.prototype.add;
@@ -181,6 +163,19 @@ if (!originalRemoveAll.__gevRegistryPatched) {
   };
   patchedRemoveAll.__gevRegistryPatched = true;
   Cesium.EntityCollection.prototype.removeAll = patchedRemoveAll;
+}
+
+// Capture every Cesium scene as soon as it renders so the touch bridge can
+// resolve against the exact scene attached to the canvas.
+const originalRender = Cesium.Scene.prototype.render;
+const RENDER_PATCH_FLAG = '__gevProjectedResolverRenderPatched';
+if (originalRender && !originalRender[RENDER_PATCH_FLAG]) {
+  const patchedRender = function projectedResolverRender(time) {
+    installSceneResolver(this);
+    return originalRender.call(this, time);
+  };
+  patchedRender[RENDER_PATCH_FLAG] = true;
+  Cesium.Scene.prototype.render = patchedRender;
 }
 
 console.info('[GEV] Screen-space target resolver ready');
