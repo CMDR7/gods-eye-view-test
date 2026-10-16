@@ -1,0 +1,19 @@
+name: GEV Web Core
+
+on:
+  push:
+    branches: [web-core]
+  pull_request:
+    branches: [web-core]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node scripts/web-core.mjs
