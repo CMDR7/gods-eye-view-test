@@ -35,6 +35,7 @@
       <div id="controls" class="controlStack" aria-label="Layer controls">
         <button id="home" type="button">HOME</button>
         <button id="locate" type="button">MY LOCATION</button>
+        <button id="coordinateNav" type="button">COORDINATE NAV</button>
         <button data-layer="aircraft" type="button">AIRCRAFT</button>
         <button data-layer="satellites" type="button">SATELLITES</button>
         <button data-layer="earthquakes" type="button">EARTHQUAKES</button>
@@ -68,6 +69,32 @@
         <button id="targetTrack" type="button">TRACK</button>
         <button id="targetClear" type="button">CLEAR</button>
       </div>
+    </section>
+
+    <section id="coordinatePanel" class="panel coordinatePanel" hidden aria-labelledby="coordinateTitle">
+      <div class="panelHeader">
+        <div id="coordinateTitle">NAVIGATION // COORDINATES</div>
+        <button id="coordinateClose" class="panelClose" type="button" aria-label="Close coordinate navigation">×</button>
+      </div>
+      <p class="panelText">Enter decimal latitude and longitude. Altitude is optional and defaults to 15 KM.</p>
+      <div class="coordinateGrid">
+        <div>
+          <label class="fieldLabel" for="coordinateLat">LATITUDE</label>
+          <input id="coordinateLat" class="coordinateInput" type="number" inputmode="decimal" step="any" min="-90" max="90" placeholder="0.0000" autocomplete="off" />
+        </div>
+        <div>
+          <label class="fieldLabel" for="coordinateLon">LONGITUDE</label>
+          <input id="coordinateLon" class="coordinateInput" type="number" inputmode="decimal" step="any" min="-180" max="180" placeholder="0.0000" autocomplete="off" />
+        </div>
+      </div>
+      <label class="fieldLabel" for="coordinateAlt">ALTITUDE // METERS</label>
+      <input id="coordinateAlt" class="coordinateInput" type="number" inputmode="decimal" step="any" min="0" placeholder="15000" autocomplete="off" />
+      <div class="panelActions">
+        <button id="coordinateFly" type="button">FLY TO</button>
+        <button id="coordinateLocation" type="button">MY LOCATION</button>
+        <button id="coordinateCopy" type="button">COPY</button>
+      </div>
+      <div id="coordinateState" class="panelState" role="status">READY // DECIMAL COORDINATES</div>
     </section>
 
     <section id="ionPanel" class="panel" hidden aria-labelledby="ionTitle">
