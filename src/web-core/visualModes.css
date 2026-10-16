@@ -1,13 +1,29 @@
 /* Web Core View System: additive styles only. Existing core UI remains untouched. */
-.visualPanel { top: 86px; }
-.visualSubtitle { margin-top: 4px; font: 500 8px/1.2 'Orbitron', sans-serif; letter-spacing: .08em; color: var(--gev-muted); }
-.visualSection { margin-top: 13px; }
-.visualSectionTitle { margin-bottom: 7px; font: 600 8px/1 'Rajdhani', sans-serif; letter-spacing: .16em; color: #72dfff; }
-.visualGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
-.visualGrid button { min-height: 40px; padding: 8px; display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 9px; }
-.visualGrid button.active { color: #e9fcff; border-color: rgba(0,220,255,.86); background: rgba(0,100,130,.34); box-shadow: inset 0 1px 0 rgba(190,245,255,.25), 0 0 15px rgba(0,220,255,.18); }
-.visualDot { width: 5px; height: 5px; flex: 0 0 5px; border: 1px solid currentColor; border-radius: 50%; box-shadow: 0 0 5px currentColor; opacity: .75; }
+.visualPanel {
+  top: 86px;
+  width: min(300px, calc(100vw - 28px));
+  background: rgba(5, 9, 13, .82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.visualSubtitle { margin-top: 3px; font: 500 7px/1.2 'Orbitron', sans-serif; letter-spacing: .08em; color: var(--gev-muted); }
+.visualSection { margin-top: 10px; }
+.visualSectionTitle { margin-bottom: 5px; font: 600 7px/1 'Rajdhani', sans-serif; letter-spacing: .16em; color: #72dfff; }
+.visualGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+.visualGrid button {
+  min-height: 29px;
+  padding: 5px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 8px;
+  letter-spacing: .08em;
+}
+.visualGrid button.active { color: #e9fcff; border-color: rgba(0,220,255,.86); background: rgba(0,100,130,.30); box-shadow: inset 0 1px 0 rgba(190,245,255,.20), 0 0 10px rgba(0,220,255,.14); }
+.visualDot { width: 4px; height: 4px; flex: 0 0 4px; border: 1px solid currentColor; border-radius: 50%; box-shadow: 0 0 4px currentColor; opacity: .72; }
 .visualGrid button.active .visualDot { background: currentColor; opacity: 1; }
+.visualPanel .panelState { margin-top: 9px; font-size: 6px; line-height: 1.25; opacity: .58; }
 
 /* Lazy HUD overlay: created only when the visual subsystem is requested. */
 .gevHudOverlay {
@@ -16,72 +32,81 @@
   z-index: 8;
   pointer-events: none;
   user-select: none;
-  color: rgba(120, 228, 255, .88);
+  color: rgba(120, 228, 255, .76);
   font-family: 'Orbitron', sans-serif;
-  font-size: 7px;
+  font-size: 6px;
   letter-spacing: .13em;
-  text-shadow: 0 0 8px rgba(0, 220, 255, .28);
-  opacity: .92;
+  text-shadow: 0 0 6px rgba(0, 220, 255, .20);
+  opacity: .82;
   transition: opacity .18s ease, filter .18s ease;
 }
-.gevHudFrame { position: absolute; width: 58px; height: 58px; opacity: .62; }
-.gevHudFrame::before, .gevHudFrame::after { content: ''; position: absolute; background: currentColor; box-shadow: 0 0 7px currentColor; }
+.gevHudFrame { position: absolute; width: 48px; height: 48px; opacity: .48; }
+.gevHudFrame::before, .gevHudFrame::after { content: ''; position: absolute; background: currentColor; box-shadow: 0 0 5px currentColor; }
 .gevHudFrame::before { width: 100%; height: 1px; }
 .gevHudFrame::after { width: 1px; height: 100%; }
-.gevHudFrame--tl { top: 18px; left: 18px; }
-.gevHudFrame--tr { top: 18px; right: 18px; transform: scaleX(-1); }
-.gevHudFrame--bl { bottom: 18px; left: 18px; transform: scaleY(-1); }
-.gevHudFrame--br { bottom: 18px; right: 18px; transform: scale(-1); }
-.gevHudTopLeft, .gevHudTopRight { position: absolute; top: 24px; padding: 4px 6px; border: 1px solid rgba(0, 220, 255, .22); background: rgba(3, 12, 17, .24); }
-.gevHudTopLeft { left: 30px; }
-.gevHudTopRight { right: 30px; }
-.gevHudReticle { position: absolute; left: 50%; top: 50%; width: 68px; height: 68px; transform: translate(-50%, -50%); border: 1px solid rgba(110, 226, 255, .48); border-radius: 50%; box-shadow: 0 0 14px rgba(0, 220, 255, .08); }
-.gevHudReticle::before, .gevHudReticle::after { content: ''; position: absolute; left: 50%; top: 50%; background: currentColor; transform: translate(-50%, -50%); box-shadow: 0 0 6px currentColor; }
-.gevHudReticle::before { width: 92px; height: 1px; opacity: .52; }
-.gevHudReticle::after { width: 1px; height: 92px; opacity: .52; }
-.gevHudReticle span { position: absolute; inset: 26px; border: 1px solid currentColor; border-radius: 50%; opacity: .72; }
-.gevHudReadout { position: absolute; bottom: 54px; display: flex; flex-direction: column; gap: 5px; line-height: 1.15; opacity: .72; }
-.gevHudReadout--left { left: 30px; }
-.gevHudReadout--right { right: 30px; text-align: right; }
-.gevHudBottom { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 4px 7px; border-top: 1px solid rgba(0, 220, 255, .28); opacity: .62; white-space: nowrap; }
+.gevHudFrame--tl { top: 16px; left: 16px; }
+.gevHudFrame--tr { top: 16px; right: 16px; transform: scaleX(-1); }
+.gevHudFrame--bl { bottom: 16px; left: 16px; transform: scaleY(-1); }
+.gevHudFrame--br { bottom: 16px; right: 16px; transform: scale(-1); }
+.gevHudTopLeft, .gevHudTopRight { position: absolute; top: 21px; padding: 3px 5px; border: 1px solid rgba(0, 220, 255, .16); background: rgba(3, 12, 17, .18); }
+.gevHudTopLeft { left: 25px; }
+.gevHudTopRight { right: 25px; }
+.gevHudReticle { position: absolute; left: 50%; top: 50%; width: 60px; height: 60px; transform: translate(-50%, -50%); border: 1px solid rgba(110, 226, 255, .36); border-radius: 50%; box-shadow: 0 0 10px rgba(0, 220, 255, .05); }
+.gevHudReticle::before, .gevHudReticle::after { content: ''; position: absolute; left: 50%; top: 50%; background: currentColor; transform: translate(-50%, -50%); box-shadow: 0 0 5px currentColor; }
+.gevHudReticle::before { width: 78px; height: 1px; opacity: .42; }
+.gevHudReticle::after { width: 1px; height: 78px; opacity: .42; }
+.gevHudReticle span { position: absolute; inset: 23px; border: 1px solid currentColor; border-radius: 50%; opacity: .58; }
+.gevHudReadout { position: absolute; bottom: 48px; display: flex; flex-direction: column; gap: 4px; line-height: 1.15; opacity: .56; }
+.gevHudReadout--left { left: 25px; }
+.gevHudReadout--right { right: 25px; text-align: right; }
+.gevHudBottom { position: absolute; left: 50%; bottom: 19px; transform: translateX(-50%); padding: 3px 6px; border-top: 1px solid rgba(0, 220, 255, .20); opacity: .46; white-space: nowrap; }
 
 /* Four presentation layouts. They change HUD presentation only. */
-html[data-gev-hud="operator"] .gevHudReticle { width: 54px; height: 54px; border-radius: 8px; transform: translate(-50%, -50%) rotate(45deg); }
+html[data-gev-hud="operator"] .gevHudReticle { width: 48px; height: 48px; border-radius: 7px; transform: translate(-50%, -50%) rotate(45deg); }
 html[data-gev-hud="operator"] .gevHudReticle span { transform: rotate(-45deg); }
-html[data-gev-hud="operator"] .gevHudReadout--left { top: 50%; bottom: auto; transform: translateY(45px); }
-html[data-gev-hud="operator"] .gevHudReadout--right { top: 50%; bottom: auto; transform: translateY(45px); }
+html[data-gev-hud="operator"] .gevHudReadout { gap: 3px; padding: 5px 6px; border: 1px solid rgba(120, 228, 255, .16); background: rgba(3, 12, 17, .14); opacity: .68; }
+html[data-gev-hud="operator"] .gevHudReadout--left { top: 50%; bottom: auto; transform: translateY(38px); }
+html[data-gev-hud="operator"] .gevHudReadout--right { top: 50%; bottom: auto; transform: translateY(38px); }
+html[data-gev-hud="operator"] .gevHudBottom { opacity: .30; }
 
 html[data-gev-hud="minimal"] .gevHudFrame,
 html[data-gev-hud="minimal"] .gevHudTopLeft,
 html[data-gev-hud="minimal"] .gevHudTopRight,
-html[data-gev-hud="minimal"] .gevHudReadout { opacity: .34; }
-html[data-gev-hud="minimal"] .gevHudFrame { width: 28px; height: 28px; }
-html[data-gev-hud="minimal"] .gevHudReticle { width: 42px; height: 42px; opacity: .66; }
-html[data-gev-hud="minimal"] .gevHudReticle::before { width: 58px; }
-html[data-gev-hud="minimal"] .gevHudReticle::after { height: 58px; }
-html[data-gev-hud="minimal"] .gevHudBottom { opacity: .36; }
+html[data-gev-hud="minimal"] .gevHudReadout,
+html[data-gev-hud="minimal"] .gevHudBottom { opacity: .20; }
+html[data-gev-hud="minimal"] .gevHudFrame { width: 24px; height: 24px; }
+html[data-gev-hud="minimal"] .gevHudReticle { width: 38px; height: 38px; opacity: .54; }
+html[data-gev-hud="minimal"] .gevHudReticle::before { width: 50px; }
+html[data-gev-hud="minimal"] .gevHudReticle::after { height: 50px; }
+html[data-gev-hud="minimal"] .gevHudReticle span { inset: 15px; }
 
-html[data-gev-hud="cyber"] .gevHudOverlay { color: rgba(216, 157, 255, .9); text-shadow: 0 0 8px rgba(170, 70, 255, .3); }
+html[data-gev-hud="cyber"] .gevHudOverlay { color: rgba(216, 157, 255, .84); text-shadow: 0 0 7px rgba(170, 70, 255, .24); }
 html[data-gev-hud="cyber"] .gevHudTopLeft,
-html[data-gev-hud="cyber"] .gevHudTopRight { border-color: rgba(190, 110, 255, .42); background: rgba(30, 4, 42, .28); }
+html[data-gev-hud="cyber"] .gevHudTopRight { border-color: rgba(190, 110, 255, .28); background: rgba(30, 4, 42, .20); }
 html[data-gev-hud="cyber"] .gevHudReticle { border-radius: 0; transform: translate(-50%, -50%) rotate(45deg); }
 html[data-gev-hud="cyber"] .gevHudReticle span { transform: rotate(-45deg); border-radius: 0; }
-html[data-gev-hud="cyber"] .gevHudOverlay::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(to bottom, transparent 0, transparent 3px, rgba(190, 110, 255, .035) 4px); }
+html[data-gev-hud="cyber"] .gevHudOverlay::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(to bottom, transparent 0, transparent 4px, rgba(190, 110, 255, .025) 5px); opacity: .7; }
+html[data-gev-hud="cyber"] .gevHudReadout { text-shadow: 0 0 8px rgba(170, 70, 255, .32); }
 
 /* Optics presentation reinforces the selected sensor mode without changing data state. */
-html[data-gev-visual-mode="nvg"] .gevHudOverlay { color: rgba(110, 255, 130, .9); }
-html[data-gev-visual-mode="flir"] .gevHudOverlay { color: rgba(255, 180, 90, .92); }
-html[data-gev-visual-mode="crt"] .gevHudOverlay { filter: saturate(.85) contrast(1.08); }
+html[data-gev-visual-mode="nvg"] .gevHudOverlay { color: rgba(110, 255, 130, .76); }
+html[data-gev-visual-mode="flir"] .gevHudOverlay { color: rgba(255, 180, 90, .78); }
+html[data-gev-visual-mode="crt"] .gevHudOverlay { filter: saturate(.85) contrast(1.04); }
 
 @media (max-width: 560px) {
-  .visualPanel { top: 70px; }
-  .visualGrid button { min-height: 38px; font-size: 8px; }
-  .gevHudFrame { width: 42px; height: 42px; }
-  .gevHudTopLeft { left: 24px; }
-  .gevHudTopRight { right: 24px; }
-  .gevHudReadout--left { left: 24px; }
-  .gevHudReadout--right { right: 24px; }
-  .gevHudBottom { bottom: 18px; font-size: 6px; }
+  .visualPanel { top: 70px; width: min(270px, calc(100vw - 22px)); }
+  .visualGrid { gap: 4px; }
+  .visualGrid button { min-height: 27px; padding: 4px 5px; font-size: 7px; }
+  .gevHudFrame { width: 38px; height: 38px; }
+  .gevHudFrame--tl { top: 14px; left: 14px; }
+  .gevHudFrame--tr { top: 14px; right: 14px; }
+  .gevHudFrame--bl { bottom: 14px; left: 14px; }
+  .gevHudFrame--br { bottom: 14px; right: 14px; }
+  .gevHudTopLeft { left: 21px; }
+  .gevHudTopRight { right: 21px; }
+  .gevHudReadout--left { left: 21px; }
+  .gevHudReadout--right { right: 21px; }
+  .gevHudBottom { bottom: 15px; font-size: 5px; }
 }
 
 /* Existing HUD layout styling remains additive and does not touch Cesium/data state. */
