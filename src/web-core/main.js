@@ -170,6 +170,15 @@ function updateIonTerrainControl() {
   button.textContent = state.ionTerrainEnabled ? 'ION TERRAIN // ON' : 'ION TERRAIN';
 }
 
+function waitForTerrainReady(terrain) {
+  return new Promise((resolve, reject) => {
+    const onReady = (provider) => resolve(provider);
+    const onError = (error) => reject(error);
+    terrain.readyEvent.addEventListener(onReady);
+    terrain.errorEvent.addEventListener(onError);
+  });
+}
+
 async function setIonTerrain(enabled) {
   if (!state.viewer) return;
   if (enabled && !getIonTokenStatus().configured) {
@@ -183,18 +192,20 @@ async function setIonTerrain(enabled) {
 
   try {
     if (enabled) {
-      state.viewer.scene.setTerrain(Cesium.Terrain.fromWorldTerrain());
+      const terrain = Cesium.Terrain.fromWorldTerrain();
+      state.viewer.scene.setTerrain(terrain);
+      await waitForTerrainReady(terrain);
       state.ionTerrainEnabled = true;
       setStatus('CESIUM WORLD TERRAIN ACTIVE', 'ok');
     } else {
-      state.viewer.scene.setTerrain(new Cesium.Terrain(new Cesium.EllipsoidTerrainProvider()));
+      state.viewer.scene.terrainProvider = new Cesium.EllipsoidTerrainProvider();
       state.ionTerrainEnabled = false;
       setStatus('ELLIPSOID TERRAIN ACTIVE', 'ok');
     }
   } catch (error) {
     console.warn('[GEV] Cesium World Terrain unavailable', error);
     state.ionTerrainEnabled = false;
-    state.viewer.scene.setTerrain(new Cesium.Terrain(new Cesium.EllipsoidTerrainProvider()));
+    state.viewer.scene.terrainProvider = new Cesium.EllipsoidTerrainProvider();
     setStatus('ION TERRAIN UNAVAILABLE — USING ELLIPSOID', 'warn');
   } finally {
     updateIonTerrainControl();
