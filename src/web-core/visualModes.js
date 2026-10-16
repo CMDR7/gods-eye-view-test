@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import './visualModes.css';
 
 const STORAGE_KEY = 'gev.webCore.visualMode.v1';
 const HUD_STORAGE_KEY = 'gev.webCore.hudLayout.v1';
@@ -48,14 +49,12 @@ void main() {
   vec3 rgb = source.rgb;
   float lum = dot(rgb, vec3(0.299, 0.587, 0.114));
 
-  // NVG: restrained phosphor-green night-vision treatment.
   if (mode > 0.5 && mode < 1.5) {
     float enhanced = smoothstep(0.05, 0.9, lum) * 1.12;
     rgb = vec3(enhanced * 0.12, enhanced * 0.82, enhanced * 0.30);
     rgb += vec3(0.0, 0.035, 0.012) * sin(uv.y * 900.0 + time * 0.35);
   }
 
-  // FLIR: luminance mapped into a restrained cyan/amber thermal palette.
   if (mode > 1.5 && mode < 2.5) {
     float t = smoothstep(0.04, 0.92, lum);
     vec3 cold = vec3(0.015, 0.10, 0.16);
@@ -64,7 +63,6 @@ void main() {
     rgb = t < 0.55 ? mix(cold, mid, t / 0.55) : mix(mid, hot, (t - 0.55) / 0.45);
   }
 
-  // CRT: subtle scanlines and phosphor contrast; preserve the underlying map.
   if (mode > 2.5) {
     float scan = 0.94 + 0.06 * sin(uv.y * 1100.0 + time * 1.8);
     float vignette = 1.0 - 0.10 * smoothstep(0.45, 0.82, distance(uv, vec2(0.5)));
