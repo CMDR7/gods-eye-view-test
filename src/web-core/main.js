@@ -17,6 +17,8 @@ const state = {
   timers: new Map(),
   ionTerrainEnabled: false,
   commandPanelOpen: false,
+  selectedEntity: null,
+  selectedLayerId: null,
 };
 
 applyStoredIonToken();
@@ -38,7 +40,9 @@ function addLayer(id, name, color) {
 
 function clearLayer(id) {
   const layer = state.layers.get(id);
-  if (layer) layer.dataSource.entities.removeAll();
+  if (!layer) return;
+  if (state.selectedLayerId === id) clearSelectedTarget();
+  layer.dataSource.entities.removeAll();
 }
 
 function setLayerEnabled(id, enabled) {
@@ -49,8 +53,8 @@ function setLayerEnabled(id, enabled) {
   document.querySelector(`[data-layer="${id}"]`)?.classList.toggle('active', enabled);
 }
 
-function addPoint(layer, lon, lat, height, label, color, pixelSize = 7) {
-  layer.dataSource.entities.add({
+function addPoint(layer, lon, lat, height, label, color, pixelSize = 7, metadata = {}) {
+  const entity = layer.dataSource.entities.add({
     position: Cesium.Cartesian3.fromDegrees(lon, lat, height || 0),
     point: {
       pixelSize,
@@ -72,6 +76,18 @@ function addPoint(layer, lon, lat, height, label, color, pixelSize = 7) {
         }
       : undefined,
   });
+
+  entity.gevMeta = {
+    type: metadata.type || layer.name,
+    name: metadata.name || label || layer.name,
+    id: metadata.id || entity.id,
+    source: metadata.source || 'GEV WEB CORE',
+    updated: metadata.updated || new Date().toISOString(),
+    altitude: Number.isFinite(metadata.altitude) ? metadata.altitude : height || 0,
+    ...metadata,
+  };
+  entity.gevVisual = { color, pixelSize };
+  return entity;
 }
 
 async function fetchJson(url, options = {}) {
@@ -84,12 +100,32 @@ async function loadEarthquakes() {
   const layer = state.layers.get('earthquakes');
   clearLayer('earthquakes');
   const feed = await fetchJson('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson');
+  const updated = new Date().toISOString();
   for (const feature of feed.features ?? []) {
     const [lon, lat, depth = 0] = feature.geometry?.coordinates ?? [];
     if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
     const mag = Number(feature.properties?.mag ?? 0);
     const color = mag >= 5 ? Cesium.Color.RED : mag >= 3 ? Cesium.Color.ORANGE : Cesium.Color.YELLOW;
-    addPoint(layer, lon, lat, Math.max(0, -depth * 1000), `M${mag.toFixed(1)} ${feature.properties?.place ?? ''}`.trim(), color, Math.min(14, 4 + mag * 1.4));
+    const place = feature.properties?.place ?? 'UNKNOWN LOCATION';
+    addPoint(
+      layer,
+      lon,
+      lat,
+      0,
+      `M${mag.toFixed(1)} ${place}`.trim(),
+      color,
+      Math.min(14, 4 + mag * 1.4),
+      {
+        type: 'EARTHQUAKE',
+        name: place,
+        id: feature.id || 'USGS EVENT',
+        source: 'USGS',
+        updated,
+        magnitude: mag,
+        depth: Number.isFinite(Number(depth)) ? Number(depth) : 0,
+        altitude: 0,
+      },
+    );
   }
   return feed.metadata?.count ?? layer.dataSource.entities.values.length;
 }
@@ -101,12 +137,35 @@ async function loadAircraft() {
   const lat = Cesium.Math.toDegrees(camera.latitude);
   const lon = Cesium.Math.toDegrees(camera.longitude);
   const data = await fetchJson(`https://api.adsb.lol/v2/point/${lat.toFixed(4)}/${lon.toFixed(4)}/250`);
+  const updated = new Date().toISOString();
   for (const ac of data.ac ?? []) {
     const aLon = Number(ac.lon);
     const aLat = Number(ac.lat);
     if (!Number.isFinite(aLon) || !Number.isFinite(aLat)) continue;
     const altitude = Number(ac.alt_baro);
-    addPoint(layer, aLon, aLat, Number.isFinite(altitude) ? altitude * 0.3048 : 500, ac.flight?.trim() || ac.hex || 'AIR', Cesium.Color.CYAN, 6);
+    const callsign = ac.flight?.trim() || ac.hex || 'AIR';
+    addPoint(
+      layer,
+      aLon,
+      aLat,
+      Number.isFinite(altitude) ? altitude * 0.3048 : 500,
+      callsign,
+      Cesium.Color.CYAN,
+      6,
+      {
+        type: 'AIRCRAFT',
+        name: callsign,
+        id: ac.hex || callsign,
+        source: 'ADSB.LOL',
+        updated,
+        altitude: Number.isFinite(altitude) ? altitude * 0.3048 : 500,
+        callsign,
+        hex: ac.hex || 'UNKNOWN',
+        squawk: ac.squawk || '—',
+        registration: ac.r || ac.reg || '—',
+        category: ac.category || '—',
+      },
+    );
   }
   return data.ac?.length ?? 0;
 }
@@ -119,6 +178,7 @@ async function loadSatellites() {
   const text = await response.text();
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const now = new Date();
+  const updated = now.toISOString();
   let count = 0;
   for (let i = 0; i + 2 < lines.length && count < MAX_SATELLITES; i += 3) {
     if (!lines[i + 1]?.startsWith('1 ') || !lines[i + 2]?.startsWith('2 ')) continue;
@@ -127,7 +187,26 @@ async function loadSatellites() {
     if (!position?.position || typeof position.position === 'boolean') continue;
     const gmst = satellite.gstime(now);
     const geo = satellite.eciToGeodetic(position.position, gmst);
-    addPoint(layer, satellite.degreesLong(geo.longitude), satellite.degreesLat(geo.latitude), geo.height * 1000, lines[i], Cesium.Color.LIME, 4);
+    const name = lines[i] || 'UNKNOWN SATELLITE';
+    const norad = lines[i + 1].slice(2, 7).trim();
+    addPoint(
+      layer,
+      satellite.degreesLong(geo.longitude),
+      satellite.degreesLat(geo.latitude),
+      geo.height * 1000,
+      name,
+      Cesium.Color.LIME,
+      4,
+      {
+        type: 'SATELLITE',
+        name,
+        id: norad || name,
+        source: 'CELESTRAK',
+        updated,
+        altitude: geo.height * 1000,
+        norad,
+      },
+    );
     count++;
   }
   return count;
@@ -154,6 +233,168 @@ function schedule(id, loader, interval) {
 
 function focusHome() {
   state.viewer.camera.flyHome(1.2);
+}
+
+function formatNumber(value, digits = 1) {
+  return Number.isFinite(Number(value)) ? Number(value).toLocaleString(undefined, { maximumFractionDigits: digits }) : '—';
+}
+
+function formatCoordinate(value, positive, negative) {
+  if (!Number.isFinite(Number(value))) return '—';
+  const numeric = Number(value);
+  return `${Math.abs(numeric).toFixed(4)}° ${numeric >= 0 ? positive : negative}`;
+}
+
+function formatUpdated(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleTimeString([], { hour12: false }) + ' UTC';
+}
+
+function setTargetField(id, value) {
+  const el = $(id);
+  if (el) el.textContent = value ?? '—';
+}
+
+function restoreSelectedVisual(entity) {
+  if (!entity?.point || !entity.gevVisual) return;
+  entity.point.color = entity.gevVisual.color;
+  entity.point.pixelSize = entity.gevVisual.pixelSize;
+  entity.point.outlineColor = Cesium.Color.BLACK;
+  entity.point.outlineWidth = 1;
+}
+
+function applySelectedVisual(entity) {
+  if (!entity?.point) return;
+  entity.point.color = Cesium.Color.WHITE;
+  entity.point.pixelSize = Math.max(Number(entity.gevVisual?.pixelSize || 6) + 4, 10);
+  entity.point.outlineColor = Cesium.Color.CYAN;
+  entity.point.outlineWidth = 2;
+}
+
+function updateTargetPanel(entity) {
+  const meta = entity?.gevMeta || {};
+  const position = entity?.position?.getValue(Cesium.JulianDate.now());
+  const cartographic = position ? Cesium.Cartographic.fromCartesian(position) : undefined;
+  const lon = cartographic ? Cesium.Math.toDegrees(cartographic.longitude) : Number.NaN;
+  const lat = cartographic ? Cesium.Math.toDegrees(cartographic.latitude) : Number.NaN;
+  const altitude = Number.isFinite(Number(meta.altitude)) ? Number(meta.altitude) : cartographic?.height;
+
+  setTargetField('targetType', meta.type || 'UNKNOWN');
+  setTargetField('targetName', meta.name || 'UNKNOWN');
+  setTargetField('targetId', meta.id || entity?.id || '—');
+  setTargetField('targetPosition', `${formatCoordinate(lat, 'N', 'S')} / ${formatCoordinate(lon, 'E', 'W')}`);
+  setTargetField('targetAltitude', `${formatNumber(altitude, 0)} M`);
+  setTargetField('targetSource', meta.source || '—');
+  setTargetField('targetUpdated', formatUpdated(meta.updated));
+
+  const detail = $('targetDetail');
+  if (meta.type === 'AIRCRAFT') {
+    detail.hidden = false;
+    setTargetField('targetDetailLabel', 'CALLSIGN');
+    setTargetField('targetDetailValue', meta.callsign || meta.name || '—');
+  } else if (meta.type === 'SATELLITE') {
+    detail.hidden = false;
+    setTargetField('targetDetailLabel', 'NORAD');
+    setTargetField('targetDetailValue', meta.norad || meta.id || '—');
+  } else if (meta.type === 'EARTHQUAKE') {
+    detail.hidden = false;
+    setTargetField('targetDetailLabel', 'MAG / DEPTH');
+    setTargetField('targetDetailValue', `M${formatNumber(meta.magnitude, 1)} / ${formatNumber(meta.depth, 1)} KM`);
+  } else {
+    detail.hidden = true;
+  }
+
+  $('targetPanel').hidden = false;
+  $('targetTrack').textContent = state.viewer.trackedEntity === entity ? 'UNTRACK' : 'TRACK';
+}
+
+function clearSelectedTarget() {
+  const previous = state.selectedEntity;
+  if (previous) restoreSelectedVisual(previous);
+  if (state.viewer?.trackedEntity === previous) state.viewer.trackedEntity = undefined;
+  state.selectedEntity = null;
+  state.selectedLayerId = null;
+  if ($('targetPanel')) $('targetPanel').hidden = true;
+  state.viewer?.scene.requestRender();
+}
+
+function selectTarget(entity) {
+  if (!entity?.gevMeta) return;
+  if (state.selectedEntity === entity) {
+    updateTargetPanel(entity);
+    return;
+  }
+  if (state.selectedEntity) restoreSelectedVisual(state.selectedEntity);
+  if (state.viewer.trackedEntity) state.viewer.trackedEntity = undefined;
+  state.selectedEntity = entity;
+  state.selectedLayerId = entity.gevMeta.layerId || null;
+  applySelectedVisual(entity);
+  state.viewer.selectedEntity = undefined;
+  updateTargetPanel(entity);
+  setStatus(`TARGET SELECTED // ${entity.gevMeta.type}`, 'ok');
+  state.viewer.scene.requestRender();
+}
+
+function pickEntity(windowPosition) {
+  const picked = state.viewer.scene.pick(windowPosition);
+  if (!Cesium.defined(picked)) return undefined;
+  const id = Cesium.defaultValue(picked.id, picked.primitive?.id);
+  return id instanceof Cesium.Entity && id.gevMeta ? id : undefined;
+}
+
+function addTargetInteraction() {
+  state.viewer.screenSpaceEventHandler.setInputAction((movement) => {
+    const entity = pickEntity(movement.position);
+    if (entity) {
+      selectTarget(entity);
+    } else {
+      clearSelectedTarget();
+    }
+  }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+  state.viewer.screenSpaceEventHandler.setInputAction((movement) => {
+    const entity = pickEntity(movement.endPosition);
+    state.viewer.canvas.style.cursor = entity ? 'pointer' : '';
+  }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+}
+
+async function flyToSelectedTarget() {
+  const entity = state.selectedEntity;
+  if (!entity) return;
+  state.viewer.trackedEntity = undefined;
+  setStatus('NAVIGATING TO TARGET…');
+  const completed = await state.viewer.flyTo(entity, {
+    duration: 1.0,
+    offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-35), 0),
+  });
+  if (completed && state.selectedEntity === entity) {
+    state.viewer.scene.requestRender();
+    setStatus(`TARGET LOCKED // ${entity.gevMeta?.name || entity.id}`, 'ok');
+  }
+}
+
+function toggleTargetTracking() {
+  const entity = state.selectedEntity;
+  if (!entity) return;
+  if (state.viewer.trackedEntity === entity) {
+    state.viewer.trackedEntity = undefined;
+    $('targetTrack').textContent = 'TRACK';
+    setStatus('TARGET TRACKING DISABLED', 'ok');
+  } else {
+    state.viewer.trackedEntity = entity;
+    $('targetTrack').textContent = 'UNTRACK';
+    setStatus(`TRACKING TARGET // ${entity.gevMeta?.name || entity.id}`, 'ok');
+  }
+  state.viewer.scene.requestRender();
+}
+
+function addTargetControls() {
+  $('targetClose').addEventListener('click', clearSelectedTarget);
+  $('targetClear').addEventListener('click', clearSelectedTarget);
+  $('targetFly').addEventListener('click', () => flyToSelectedTarget());
+  $('targetTrack').addEventListener('click', toggleTargetTracking);
 }
 
 function updateIonPanelState() {
@@ -351,6 +592,7 @@ function addControls() {
         clearLayer(id);
         const timer = state.timers.get(id);
         if (timer) clearInterval(timer);
+        state.timers.delete(id);
       }
     });
   });
@@ -364,6 +606,7 @@ function addControls() {
     );
   });
   addIonControls();
+  addTargetControls();
 
   window.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
@@ -371,7 +614,11 @@ function addControls() {
       closeCommandPanel();
       return;
     }
-    $('ionPanel').hidden = true;
+    if (!$('ionPanel').hidden) {
+      $('ionPanel').hidden = true;
+      return;
+    }
+    clearSelectedTarget();
   });
 }
 
@@ -403,6 +650,7 @@ async function boot() {
   addLayer('aircraft', 'AIRCRAFT', Cesium.Color.CYAN);
   addLayer('satellites', 'SATELLITES', Cesium.Color.LIME);
   addLayer('earthquakes', 'EARTHQUAKES', Cesium.Color.ORANGE);
+  addTargetInteraction();
   addControls();
   focusHome();
   const ionStatus = getIonTokenStatus();
