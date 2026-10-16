@@ -6,6 +6,9 @@
   <meta name="theme-color" content="#05070a" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="referrer" content="no-referrer-when-downgrade" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
   <title>GOD'S EYE VIEW // WEB CORE</title>
 </head>
 <body>
@@ -13,7 +16,23 @@
     <div id="cesiumContainer"></div>
     <div id="hud">
       <div id="brand">GOD'S EYE // WEB CORE</div>
-      <div id="controls" aria-label="Layer controls">
+      <button id="menuToggle" class="menuToggle" type="button" aria-label="Open command panel" aria-controls="commandPanel" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+      <div id="status" role="status">BOOTING…</div>
+    </div>
+
+    <div id="commandBackdrop" class="commandBackdrop" hidden></div>
+    <aside id="commandPanel" class="commandPanel" hidden aria-labelledby="commandTitle">
+      <div class="commandHeader">
+        <div>
+          <div id="commandTitle" class="commandTitle">COMMAND // WEB CORE</div>
+          <div class="commandSubtitle">NAVIGATION &amp; INTELLIGENCE LAYERS</div>
+        </div>
+        <button id="commandClose" class="panelClose" type="button" aria-label="Close command panel">×</button>
+      </div>
+
+      <div id="controls" class="controlStack" aria-label="Layer controls">
         <button id="home" type="button">HOME</button>
         <button id="locate" type="button">MY LOCATION</button>
         <button data-layer="aircraft" type="button">AIRCRAFT</button>
@@ -22,8 +41,7 @@
         <button id="ionSettings" type="button">CESIUM ION</button>
         <button id="ionTerrain" type="button" disabled>ION TERRAIN</button>
       </div>
-      <div id="status" role="status">BOOTING…</div>
-    </div>
+    </aside>
 
     <section id="ionPanel" class="panel" hidden aria-labelledby="ionTitle">
       <div class="panelHeader">
