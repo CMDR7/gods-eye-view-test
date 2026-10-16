@@ -25,15 +25,30 @@ function nativePick(scene, windowPosition) {
   return undefined;
 }
 
-function findGevEntity(scene, windowPosition) {
-  // A/B test: use native Cesium GPU picking first. The satellite test layer
-  // is backed by PointPrimitiveCollection with PointPrimitive.id = Entity,
-  // matching the original GEV interaction architecture.
-  const native = nativePick(scene, windowPosition);
-  if (native) return native;
+function projectedPick(scene, windowPosition) {
+  const entity = scene.__gevResolveProjectedTarget?.(windowPosition);
+  return entity ? { entity, source: 'PROJECTED' } : undefined;
+}
 
-  const projected = scene.__gevResolveProjectedTarget?.(windowPosition);
-  if (projected) return { entity: projected, source: 'PROJECTED' };
+function findGevEntity(scene, primaryPosition, alternatePosition) {
+  // Android/browser input stacks can expose the canvas Y coordinate in
+  // different conventions. Test both native Cesium positions before falling
+  // back to projection. The selected Entity is passed directly to the click
+  // action, so the winning coordinate does not affect target selection.
+  const positions = [primaryPosition];
+  if (alternatePosition && (alternatePosition.x !== primaryPosition.x || alternatePosition.y !== primaryPosition.y)) {
+    positions.push(alternatePosition);
+  }
+
+  for (const position of positions) {
+    const native = nativePick(scene, position);
+    if (native) return native;
+  }
+
+  for (const position of positions) {
+    const projected = projectedPick(scene, position);
+    if (projected) return projected;
+  }
 
   return undefined;
 }
@@ -117,11 +132,13 @@ function installTouchBridge(handler) {
     const rect = element.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
-    const windowPosition = new Cesium.Cartesian2(x, rect.height - y);
+    const height = rect.height || element.clientHeight || 0;
+    const primaryPosition = new Cesium.Cartesian2(x, height - y);
+    const alternatePosition = new Cesium.Cartesian2(x, y);
     const scene = element.__gevScene;
     if (!scene) return;
 
-    const result = findGevEntity(scene, windowPosition);
+    const result = findGevEntity(scene, primaryPosition, alternatePosition);
     const entity = result?.entity;
     if (entity) {
       showTouchFocus(event.clientX, event.clientY, `${result.source} TARGET // ${entity.gevMeta?.type || 'GEV'}`);
@@ -131,11 +148,11 @@ function installTouchBridge(handler) {
 
     const action = handler.getInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK);
     if (typeof action === 'function') {
-      action({ position: windowPosition, __gevTarget: entity, __gevTargetSource: result?.source });
+      action({ position: primaryPosition, __gevTarget: entity, __gevTargetSource: result?.source });
     }
 
     if (!entity) {
-      const groundMessage = formatGroundPosition(scene, windowPosition);
+      const groundMessage = formatGroundPosition(scene, primaryPosition);
       if (groundMessage) showTouchFocus(event.clientX, event.clientY, groundMessage);
     }
   }, { passive: true });
