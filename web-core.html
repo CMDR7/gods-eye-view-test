@@ -76,7 +76,12 @@
         <div id="coordinateTitle">NAVIGATION // COORDINATES</div>
         <button id="coordinateClose" class="panelClose" type="button" aria-label="Close coordinate navigation">×</button>
       </div>
-      <p class="panelText">Enter decimal latitude and longitude. Altitude is optional and defaults to 15 KM.</p>
+      <p class="panelText">Enter a city or decimal coordinates. City search resolves the location, then uses the same FLY TO navigation command.</p>
+      <label class="fieldLabel" for="coordinateCity">CITY / PLACE</label>
+      <input id="coordinateCity" class="coordinateInput" type="text" inputmode="text" placeholder="e.g. Mannheim" autocomplete="off" spellcheck="false" />
+      <div class="panelActions cityActions">
+        <button id="cityFly" type="button">FLY TO CITY</button>
+      </div>
       <div class="coordinateGrid">
         <div>
           <label class="fieldLabel" for="coordinateLat">LATITUDE</label>
@@ -117,5 +122,6 @@
     </section>
   </div>
   <script type="module" src="/src/web-core/main.js"></script>
+  <script type="module" src="/src/web-core/cityNav.js"></script>
 </body>
 </html>
