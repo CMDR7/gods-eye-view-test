@@ -355,10 +355,31 @@ function addTargetInteraction() {
   }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 }
 async function flyToSelectedTarget() {
-  const entity = state.selectedEntity; if (!entity) return;
-  state.viewer.trackedEntity = undefined; setStatus('NAVIGATING TO TARGET…');
-  const completed = await state.viewer.flyTo(entity, { duration: 1.0, offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-35), 0) });
-  if (completed) setStatus(`TARGET LOCKED // ${entity.gevMeta?.type || 'GEV'}`, 'ok');
+  const entity = state.selectedEntity;
+  if (!entity) return;
+  const position = entity.position?.getValue(Cesium.JulianDate.now());
+  if (!Cesium.defined(position)) {
+    setStatus('TARGET NAV ERROR // POSITION UNAVAILABLE', 'warn');
+    return;
+  }
+
+  state.viewer.trackedEntity = undefined;
+  setStatus('NAVIGATING TO TARGET…');
+
+  const altitude = Number(entity.gevMeta?.altitude);
+  const range = Math.min(1_500_000, Math.max(150_000, Number.isFinite(altitude) ? altitude * 0.75 : 250_000));
+  const boundingSphere = new Cesium.BoundingSphere(position, Math.max(1_000, Math.min(25_000, range * 0.02)));
+
+  try {
+    const completed = await state.viewer.camera.flyToBoundingSphere(boundingSphere, {
+      duration: 1.5,
+      offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-35), range),
+    });
+    if (completed) setStatus(`TARGET LOCKED // ${entity.gevMeta?.type || 'GEV'}`, 'ok');
+  } catch (error) {
+    console.warn('[GEV] Target flight failed', error);
+    setStatus('TARGET NAV ERROR // FLIGHT FAILED', 'warn');
+  }
 }
 function toggleTargetTracking() {
   const entity = state.selectedEntity; if (!entity) return;
