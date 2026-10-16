@@ -37,11 +37,10 @@ function getGevEntities(scene) {
   return entities;
 }
 
-// Resolve directly in the same top-left CSS-pixel coordinate system as the
-// PointerEvent. We deliberately do not convert this point into Cesium window
-// coordinates until after the target has been identified. This removes the
-// mobile/high-DPI origin ambiguity that caused valid taps to fall through to
-// globe picking.
+// PointerEvent coordinates are measured from the top-left of the canvas in
+// CSS pixels. Cesium exposes cartesianToCanvasCoordinates() specifically for
+// mapping world positions into the same canvas screen space. Comparing those
+// two spaces directly avoids the mobile/high-DPI window-coordinate ambiguity.
 function resolveProjectedTarget(scene, canvasX, canvasY) {
   if (!scene || !Number.isFinite(canvasX) || !Number.isFinite(canvasY)) return undefined;
 
@@ -73,23 +72,14 @@ function resolveProjectedTarget(scene, canvasX, canvasY) {
   return best;
 }
 
-function installSceneResolver(scene) {
-  if (!scene || scene[RESOLVER_FLAG]) return;
-  scene.__gevResolveProjectedTarget = (canvasX, canvasY) => resolveProjectedTarget(scene, canvasX, canvasY);
-  scene[RESOLVER_FLAG] = true;
-}
-
-// The touch bridge installs the resolver on the scene during render. Keep the
-// patch deliberately small: it does not alter Cesium's native picking rules.
-const originalRender = Cesium.Scene.prototype.render;
-const RENDER_PATCH_FLAG = '__gevProjectedResolverRenderPatched';
-if (originalRender && !originalRender[RENDER_PATCH_FLAG]) {
-  const patchedRender = function projectedResolverRender(time) {
-    installSceneResolver(this);
-    return originalRender.call(this, time);
+// Install on the prototype before the Viewer/Scene is constructed. The touch
+// bridge can therefore resolve a target on the very first tap; it no longer
+// depends on a previous render() call to initialize per-scene state.
+if (!Cesium.Scene.prototype[RESOLVER_FLAG]) {
+  Cesium.Scene.prototype.__gevResolveProjectedTarget = function resolveGevProjectedTarget(canvasX, canvasY) {
+    return resolveProjectedTarget(this, canvasX, canvasY);
   };
-  patchedRender[RENDER_PATCH_FLAG] = true;
-  Cesium.Scene.prototype.render = patchedRender;
+  Cesium.Scene.prototype[RESOLVER_FLAG] = true;
 }
 
 console.info('[GEV] Screen-space target resolver ready');
