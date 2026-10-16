@@ -5,21 +5,36 @@ const TOUCH_TAP_TOLERANCE = 14;
 const TOUCH_BRIDGE_FLAG = '__gevTouchBridgeInstalled';
 const RENDER_PATCH_FLAG = '__gevSceneCapturePatched';
 
-function findGevEntity(scene, windowPosition) {
-  const projected = scene.__gevResolveProjectedTarget?.(windowPosition);
-  if (projected) return projected;
+function resolvePickedEntity(picked) {
+  if (!Cesium.defined(picked)) return undefined;
+  const pickedId = Cesium.defaultValue(picked.id, picked.primitive?.id);
+  return pickedId instanceof Cesium.Entity && pickedId.gevMeta ? pickedId : undefined;
+}
 
+function nativePick(scene, windowPosition) {
   const picked = scene.pick(windowPosition, DEFAULT_PICK_SIZE, DEFAULT_PICK_SIZE);
-  if (Cesium.defined(picked)) {
-    const pickedId = Cesium.defaultValue(picked.id, picked.primitive?.id);
-    if (pickedId instanceof Cesium.Entity && pickedId.gevMeta) return pickedId;
-  }
+  const entity = resolvePickedEntity(picked);
+  if (entity) return { entity, source: 'NATIVE' };
 
   const candidates = scene.drillPick(windowPosition, DEFAULT_PICK_SIZE, DEFAULT_PICK_SIZE);
   for (const candidate of candidates) {
-    const id = Cesium.defaultValue(candidate?.id, candidate?.primitive?.id);
-    if (id instanceof Cesium.Entity && id.gevMeta) return id;
+    const entityFromCandidate = resolvePickedEntity(candidate);
+    if (entityFromCandidate) return { entity: entityFromCandidate, source: 'NATIVE_DRILL' };
   }
+
+  return undefined;
+}
+
+function findGevEntity(scene, windowPosition) {
+  // A/B test: use native Cesium GPU picking first. The satellite test layer
+  // is backed by PointPrimitiveCollection with PointPrimitive.id = Entity,
+  // matching the original GEV interaction architecture.
+  const native = nativePick(scene, windowPosition);
+  if (native) return native;
+
+  const projected = scene.__gevResolveProjectedTarget?.(windowPosition);
+  if (projected) return { entity: projected, source: 'PROJECTED' };
+
   return undefined;
 }
 
@@ -102,28 +117,23 @@ function installTouchBridge(handler) {
     const rect = element.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
-    // Cesium's camera/getPickRay path uses its window coordinate origin. The
-    // existing ground-focus implementation already proves this conversion is
-    // correct on the target device, so the same position is passed to the
-    // satellite ray resolver and native Cesium picking.
     const windowPosition = new Cesium.Cartesian2(x, rect.height - y);
     const scene = element.__gevScene;
     if (!scene) return;
 
-    const entity = findGevEntity(scene, windowPosition);
+    const result = findGevEntity(scene, windowPosition);
+    const entity = result?.entity;
     if (entity) {
-      showTouchFocus(event.clientX, event.clientY, `TARGET FOCUS // ${entity.gevMeta?.type || 'GEV'}`);
+      showTouchFocus(event.clientX, event.clientY, `${result.source} TARGET // ${entity.gevMeta?.type || 'GEV'}`);
     } else {
       showTouchFocus(event.clientX, event.clientY);
     }
 
     const action = handler.getInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK);
     if (typeof action === 'function') {
-      action({ position: windowPosition, __gevTarget: entity });
+      action({ position: windowPosition, __gevTarget: entity, __gevTargetSource: result?.source });
     }
 
-    // Ground coordinates are only a fallback after the ray-space target
-    // resolver and native Cesium entity picking both return no GEV entity.
     if (!entity) {
       const groundMessage = formatGroundPosition(scene, windowPosition);
       if (groundMessage) showTouchFocus(event.clientX, event.clientY, groundMessage);
