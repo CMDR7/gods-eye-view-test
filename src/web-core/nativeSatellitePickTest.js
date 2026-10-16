@@ -57,7 +57,16 @@ function syncNativeSatellitePoints(scene) {
 
 function resolveNativeScreenTarget(scene, canvasX, canvasY) {
   const collection = scene?.[COLLECTION_FLAG];
-  if (!collection || collection.show === false) return undefined;
+  const canvas = scene?.canvas;
+  if (!collection || collection.show === false || !canvas) return undefined;
+
+  const rect = canvas.getBoundingClientRect();
+  const cssWidth = rect.width || canvas.clientWidth || 1;
+  const cssHeight = rect.height || canvas.clientHeight || 1;
+  const bufferWidth = canvas.width || cssWidth;
+  const bufferHeight = canvas.height || cssHeight;
+  const scaleX = cssWidth / bufferWidth;
+  const scaleY = cssHeight / bufferHeight;
 
   const tap = new Cesium.Cartesian2(canvasX, canvasY);
   const projected = new Cesium.Cartesian2();
@@ -76,7 +85,16 @@ function resolveNativeScreenTarget(scene, canvasX, canvasY) {
     }
     if (!Cesium.defined(screenPosition)) continue;
 
-    const distance = Cesium.Cartesian2.distance(tap, screenPosition);
+    // Cesium documents PointPrimitive screen coordinates as top-left canvas
+    // coordinates. Normalize through the actual canvas buffer/CSS dimensions
+    // so Android device-pixel scaling cannot move the hit target away from
+    // the rendered point.
+    const normalized = new Cesium.Cartesian2(
+      screenPosition.x * scaleX,
+      screenPosition.y * scaleY,
+    );
+
+    const distance = Cesium.Cartesian2.distance(tap, normalized);
     if (distance <= bestDistance) {
       bestDistance = distance;
       best = point;
@@ -124,22 +142,11 @@ function installDirectTouchResolver(scene) {
 
     const status = document.getElementById('status');
     if (entity) {
-      scene.__gevDirectSatelliteTarget = entity;
       if (status) {
         status.textContent = `DIRECT SCREEN TARGET // SATELLITE // ${entity.gevMeta?.id || entity.id}`;
         status.dataset.type = 'ok';
       }
-
-      const handler = scene.screenSpaceCameraController ? scene._screenSpaceEventHandler : null;
-      const inputHandler = handler || scene.viewer?.screenSpaceEventHandler;
-      const action = inputHandler?.getInputAction?.(Cesium.ScreenSpaceEventType.LEFT_CLICK);
-      if (typeof action === 'function') {
-        const windowPosition = new Cesium.Cartesian2(canvasX, canvas.clientHeight - canvasY);
-        action({ position: windowPosition, __gevTarget: entity, __gevTargetSource: 'DIRECT_SCREEN' });
-      }
-      window.setTimeout(() => {
-        scene.__gevDirectSatelliteTarget = null;
-      }, 0);
+      scene.__gevDirectSatelliteTarget = entity;
     } else if (status) {
       status.textContent = 'DIRECT SCREEN TEST // NO SATELLITE AT TAP';
       status.dataset.type = 'warn';
