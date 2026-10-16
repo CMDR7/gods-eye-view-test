@@ -125,9 +125,13 @@ function installTouchBridge(handler) {
     if (!wasTap) return;
 
     const rect = element.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    // Cesium ScreenSpaceEventHandler uses a bottom-left origin for window
+    // coordinates. PointerEvent client coordinates use a top-left origin.
     const windowPosition = new Cesium.Cartesian2(
-      event.clientX - rect.left,
-      event.clientY - rect.top,
+      x,
+      element.clientHeight - y,
     );
     const scene = element.__gevScene;
     if (!scene) return;
