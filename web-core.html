@@ -13,7 +13,7 @@
 </head>
 <body>
   <div id="app">
-    <div id="cesiumContainer"></div>
+    <div id="globe" style="position:fixed;inset:0;width:100%;height:100%;"></div>
     <div id="hud">
       <div id="brand">GOD'S EYE // WEB CORE</div>
       <button id="menuToggle" class="menuToggle" type="button" aria-label="Open command panel" aria-controls="commandPanel" aria-expanded="false">
@@ -88,10 +88,18 @@
       <p class="panelText">Enter a city or decimal coordinates. City search resolves the location, then uses the same FLY TO navigation command.</p>
       <label class="fieldLabel" for="coordinateCity">CITY / PLACE</label>
       <input id="coordinateCity" class="coordinateInput" type="text" inputmode="text" placeholder="e.g. Mannheim" autocomplete="off" spellcheck="false" />
-      <div class="panelActions cityActions"><button id="cityFly" type="button">FLY TO CITY</button></div>
+      <div class="panelActions cityActions">
+        <button id="cityFly" type="button">FLY TO CITY</button>
+      </div>
       <div class="coordinateGrid">
-        <div><label class="fieldLabel" for="coordinateLat">LATITUDE</label><input id="coordinateLat" class="coordinateInput" type="number" inputmode="decimal" step="any" min="-90" max="90" placeholder="0.0000" autocomplete="off" /></div>
-        <div><label class="fieldLabel" for="coordinateLon">LONGITUDE</label><input id="coordinateLon" class="coordinateInput" type="number" inputmode="decimal" step="any" min="-180" max="180" placeholder="0.0000" autocomplete="off" /></div>
+        <div>
+          <label class="fieldLabel" for="coordinateLat">LATITUDE</label>
+          <input id="coordinateLat" class="coordinateInput" type="number" inputmode="decimal" step="any" min="-90" max="90" placeholder="0.0000" autocomplete="off" />
+        </div>
+        <div>
+          <label class="fieldLabel" for="coordinateLon">LONGITUDE</label>
+          <input id="coordinateLon" class="coordinateInput" type="number" inputmode="decimal" step="any" min="-180" max="180" placeholder="0.0000" autocomplete="off" />
+        </div>
       </div>
       <label class="fieldLabel" for="coordinateAlt">ALTITUDE // METERS</label>
       <input id="coordinateAlt" class="coordinateInput" type="number" inputmode="decimal" step="any" min="0" placeholder="15000" autocomplete="off" />
@@ -111,8 +119,14 @@
       <p id="ionDescription" class="panelText">Enter your own Cesium Ion access token. The token is used directly by this browser and is never sent to a GEV server.</p>
       <label class="fieldLabel" for="ionToken">ACCESS TOKEN</label>
       <input id="ionToken" class="tokenInput" type="password" inputmode="text" autocomplete="off" spellcheck="false" placeholder="Paste Cesium Ion token" />
-      <label class="rememberRow"><input id="ionRemember" type="checkbox" checked /><span>Remember on this device</span></label>
-      <div class="panelActions"><button id="ionConnect" type="button">CONNECT</button><button id="ionClear" type="button">CLEAR</button></div>
+      <label class="rememberRow">
+        <input id="ionRemember" type="checkbox" checked />
+        <span>Remember on this device</span>
+      </label>
+      <div class="panelActions">
+        <button id="ionConnect" type="button">CONNECT</button>
+        <button id="ionClear" type="button">CLEAR</button>
+      </div>
       <div id="ionState" class="panelState" role="status">NO USER TOKEN CONFIGURED</div>
     </section>
   </div>
