@@ -1,37 +1,10 @@
 import * as Cesium from 'cesium';
 
 const PATCH_FLAG = '__gevScreenTargetResolverPatched';
-const ENTITY_REGISTRY = new Set();
-const DEFAULT_RADIUS_PX = 34;
-const SATELLITE_RADIUS_PX = 44;
-const AIRCRAFT_RADIUS_PX = 36;
-const GROUND_RADIUS_PX = 30;
-const OCCLUSION_ALTITUDE_M = 50_000;
-const OCCLUSION_TOLERANCE_M = 5_000;
-
-function isGevEntity(entity) {
-  return entity instanceof Cesium.Entity
-    && Boolean(entity.gevMeta)
-    && entity.show !== false
-    && entity.isShowing !== false;
-}
-
-function registerEntity(entity) {
-  if (entity instanceof Cesium.Entity) ENTITY_REGISTRY.add(entity);
-  return entity;
-}
-
-function unregisterEntity(entity) {
-  ENTITY_REGISTRY.delete(entity);
-}
-
-function cleanupRegistry() {
-  for (const entity of ENTITY_REGISTRY) {
-    if (!entity?.entityCollection || entity.entityCollection.contains?.(entity) === false) {
-      ENTITY_REGISTRY.delete(entity);
-    }
-  }
-}
+const RESOLVER_FLAG = '__gevProjectedResolverInstalled';
+const SATELLITE_RADIUS_PX = 46;
+const AIRCRAFT_RADIUS_PX = 38;
+const GROUND_RADIUS_PX = 32;
 
 function targetRadius(entity) {
   switch (entity.gevMeta?.type) {
@@ -42,39 +15,56 @@ function targetRadius(entity) {
     case 'EARTHQUAKE':
       return GROUND_RADIUS_PX;
     default:
-      return DEFAULT_RADIUS_PX;
+      return GROUND_RADIUS_PX;
   }
 }
 
-function isOccludedByGlobe(scene, windowPosition, targetPosition, altitude) {
-  if (!Number.isFinite(altitude) || altitude < OCCLUSION_ALTITUDE_M) return false;
+function isSelectableEntity(entity, dataSource) {
+  return entity instanceof Cesium.Entity
+    && Boolean(entity.gevMeta)
+    && entity.show !== false
+    && entity.isShowing !== false
+    && dataSource?.show !== false
+    && entity.position;
+}
 
-  const ray = scene.camera.getPickRay(windowPosition);
-  if (!ray) return false;
+function getGevEntities(scene) {
+  const entities = [];
+  const dataSources = scene?.dataSources?.values || [];
 
-  const surface = scene.globe?.pick(ray, scene);
-  if (!Cesium.defined(surface)) return false;
+  for (const dataSource of dataSources) {
+    if (dataSource?.show === false || !dataSource?.entities) continue;
+    for (const entity of dataSource.entities.values || []) {
+      if (isSelectableEntity(entity, dataSource)) entities.push(entity);
+    }
+  }
 
-  const cameraPosition = scene.camera.positionWC;
-  const targetDistance = Cesium.Cartesian3.distance(cameraPosition, targetPosition);
-  const surfaceDistance = Cesium.Cartesian3.distance(cameraPosition, surface);
-
-  return surfaceDistance + OCCLUSION_TOLERANCE_M < targetDistance;
+  return entities;
 }
 
 function resolveProjectedTarget(scene, windowPosition) {
   if (!scene || !Cesium.defined(windowPosition)) return undefined;
 
-  cleanupRegistry();
+  // ScreenSpaceEventHandler / pointer events use a top-left CSS-pixel origin
+  // for the canvas interaction path. cartesianToCanvasCoordinates() uses the
+  // same canvas coordinate system, so this avoids the window/drawing-buffer
+  // and bottom-left/top-left ambiguity on high-DPI mobile browsers.
+  const canvas = scene.canvas;
+  const canvasRect = canvas?.getBoundingClientRect?.();
+  const canvasHeight = canvas?.clientHeight || canvasRect?.height || 0;
+  if (!canvasHeight) return undefined;
+
+  const canvasPoint = new Cesium.Cartesian2(
+    windowPosition.x,
+    canvasHeight - windowPosition.y,
+  );
 
   let best;
   let bestDistance = Number.POSITIVE_INFINITY;
   const now = Cesium.JulianDate.now();
   const projected = new Cesium.Cartesian2();
 
-  for (const entity of ENTITY_REGISTRY) {
-    if (!isGevEntity(entity) || !entity.position) continue;
-
+  for (const entity of getGevEntities(scene)) {
     let worldPosition;
     try {
       worldPosition = entity.position.getValue(now);
@@ -83,21 +73,16 @@ function resolveProjectedTarget(scene, windowPosition) {
     }
     if (!Cesium.defined(worldPosition)) continue;
 
-    const screenPosition = Cesium.SceneTransforms.worldToWindowCoordinates(
-      scene,
-      worldPosition,
-      projected,
-    );
+    // Cesium's canvas-space coordinates are top-left based and match the
+    // rendered PointGraphics screen position.
+    const screenPosition = scene.cartesianToCanvasCoordinates(worldPosition, projected);
     if (!Cesium.defined(screenPosition)) continue;
 
-    const dx = screenPosition.x - windowPosition.x;
-    const dy = screenPosition.y - windowPosition.y;
+    const dx = screenPosition.x - canvasPoint.x;
+    const dy = screenPosition.y - canvasPoint.y;
     const distance = Math.hypot(dx, dy);
     const radius = targetRadius(entity);
     if (distance > radius || distance >= bestDistance) continue;
-
-    const altitude = Number(entity.gevMeta?.altitude);
-    if (isOccludedByGlobe(scene, screenPosition, worldPosition, altitude)) continue;
 
     best = entity;
     bestDistance = distance;
@@ -106,17 +91,21 @@ function resolveProjectedTarget(scene, windowPosition) {
   return best;
 }
 
-// Expose a deterministic resolver for the mobile touch bridge. This bypasses
-// WebGL primitive picking for high-altitude point entities while leaving the
-// rendered Cesium points unchanged.
 function installSceneResolver(scene) {
-  if (!scene) return;
+  if (!scene || scene[RESOLVER_FLAG]) return;
   scene.__gevResolveProjectedTarget = (windowPosition) => resolveProjectedTarget(scene, windowPosition);
+  scene[RESOLVER_FLAG] = true;
 }
 
 const originalPick = Cesium.Scene.prototype.pick;
 if (originalPick && !originalPick[PATCH_FLAG]) {
   const projectedPick = function projectedTargetPick(windowPosition, width, height) {
+    // The touch bridge places the projected entity here immediately before it
+    // invokes Cesium's registered LEFT_CLICK action. Returning it from pick()
+    // lets the existing main.js selection path remain unchanged.
+    const touchTarget = this.__gevTouchTarget;
+    if (touchTarget?.gevMeta) return { id: touchTarget, primitive: touchTarget };
+
     const picked = originalPick.call(this, windowPosition, width, height);
     if (Cesium.defined(picked)) {
       const pickedId = Cesium.defaultValue(picked.id, picked.primitive?.id);
@@ -133,40 +122,9 @@ if (originalPick && !originalPick[PATCH_FLAG]) {
   Cesium.Scene.prototype.pick = projectedPick;
 }
 
-const originalAdd = Cesium.EntityCollection.prototype.add;
-const originalRemove = Cesium.EntityCollection.prototype.remove;
-const originalRemoveAll = Cesium.EntityCollection.prototype.removeAll;
-
-if (!originalAdd.__gevRegistryPatched) {
-  const patchedAdd = function patchedEntityAdd(entity) {
-    const added = originalAdd.call(this, entity);
-    registerEntity(added);
-    return added;
-  };
-  patchedAdd.__gevRegistryPatched = true;
-  Cesium.EntityCollection.prototype.add = patchedAdd;
-}
-
-if (!originalRemove.__gevRegistryPatched) {
-  const patchedRemove = function patchedEntityRemove(entity) {
-    unregisterEntity(entity);
-    return originalRemove.call(this, entity);
-  };
-  patchedRemove.__gevRegistryPatched = true;
-  Cesium.EntityCollection.prototype.remove = patchedRemove;
-}
-
-if (!originalRemoveAll.__gevRegistryPatched) {
-  const patchedRemoveAll = function patchedEntityRemoveAll() {
-    for (const entity of this.values) unregisterEntity(entity);
-    return originalRemoveAll.call(this);
-  };
-  patchedRemoveAll.__gevRegistryPatched = true;
-  Cesium.EntityCollection.prototype.removeAll = patchedRemoveAll;
-}
-
-// Capture every Cesium scene as soon as it renders so the touch bridge can
-// resolve against the exact scene attached to the canvas.
+// Capture every Cesium scene so the mobile touch bridge can use the same
+// resolver without depending on module execution order or EntityCollection
+// prototype patches.
 const originalRender = Cesium.Scene.prototype.render;
 const RENDER_PATCH_FLAG = '__gevProjectedResolverRenderPatched';
 if (originalRender && !originalRender[RENDER_PATCH_FLAG]) {
