@@ -1,6 +1,7 @@
 import * as satellite from 'satellite.js';
 
-const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+const AIRCRAFT_CACHE_TTL_MS = 60_000;
+const SATELLITE_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const cache = new Map();
 let requestSerial = 0;
 let lastTargetKey = '';
@@ -30,6 +31,12 @@ function formatNumber(value, digits = 1) {
     : '—';
 }
 
+function formatTimestamp(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '—' : date.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC');
+}
+
 async function fetchJson(url) {
   const response = await fetch(url, { mode: 'cors', headers: { Accept: 'application/json' } });
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
@@ -39,7 +46,7 @@ async function fetchJson(url) {
 async function aircraftDetails(hex) {
   const key = `aircraft:${hex}`;
   const cached = cache.get(key);
-  if (cached && Date.now() - cached.time < CACHE_TTL_MS) return cached.data;
+  if (cached && Date.now() - cached.time < AIRCRAFT_CACHE_TTL_MS) return cached.data;
 
   const payload = await fetchJson(`https://api.adsb.lol/v2/hex/${encodeURIComponent(hex)}`);
   const aircraft = payload?.ac?.[0];
@@ -47,13 +54,13 @@ async function aircraftDetails(hex) {
 
   const data = {
     callsign: aircraft.flight?.trim() || '—',
+    hex: aircraft.hex || hex || '—',
     registration: aircraft.r || aircraft.reg || '—',
     type: aircraft.t || '—',
     squawk: aircraft.squawk || '—',
     category: aircraft.category || '—',
     speed: Number.isFinite(Number(aircraft.gs)) ? `${formatNumber(aircraft.gs, 0)} KT` : '—',
     track: Number.isFinite(Number(aircraft.track)) ? `${formatNumber(aircraft.track, 1)}°` : '—',
-    verticalRate: Number.isFinite(Number(aircraft.baro_rate)) ? `${formatNumber(aircraft.baro_rate * 0.00508, 1)} M/S` : '—',
   };
   cache.set(key, { time: Date.now(), data });
   return data;
@@ -62,7 +69,7 @@ async function aircraftDetails(hex) {
 async function satelliteDetails(norad) {
   const key = `satellite:${norad}`;
   const cached = cache.get(key);
-  if (cached && Date.now() - cached.time < CACHE_TTL_MS) return cached.data;
+  if (cached && Date.now() - cached.time < SATELLITE_CACHE_TTL_MS) return cached.data;
 
   const response = await fetchJson(`https://celestrak.org/NORAD/elements/gp.php?CATNR=${encodeURIComponent(norad)}&FORMAT=JSON`);
   const omm = Array.isArray(response) ? response[0] : response;
@@ -78,13 +85,13 @@ async function satelliteDetails(norad) {
 
   const data = {
     name: omm.OBJECT_NAME || 'UNKNOWN SATELLITE',
+    norad: String(omm.NORAD_CAT_ID),
     altitude: geo ? `${formatNumber(geo.height, 0)} KM` : '—',
     inclination: Number.isFinite(Number(omm.INCLINATION)) ? `${formatNumber(omm.INCLINATION, 2)}°` : '—',
     eccentricity: Number.isFinite(Number(omm.ECCENTRICITY)) ? Number(omm.ECCENTRICITY).toFixed(6) : '—',
     period: Number.isFinite(Number(omm.MEAN_MOTION)) && Number(omm.MEAN_MOTION) > 0
-      ? `${formatNumber(1440 / Number(omm.MEAN_MOTION), 1)} MIN`
-      : '—',
-    epoch: omm.EPOCH || '—',
+      ? `${formatNumber(1440 / Number(omm.MEAN_MOTION), 1)} MIN` : '—',
+    epoch: formatTimestamp(omm.EPOCH),
   };
   cache.set(key, { time: Date.now(), data });
   return data;
@@ -92,14 +99,15 @@ async function satelliteDetails(norad) {
 
 function earthquakeDetails() {
   const raw = $('targetDetailValue')?.textContent || '';
-  const match = raw.match(/M\s*([\d.]+)\s*\/\s*([\d.]+)\s*KM/i);
+  const magnitude = raw.match(/M\s*([\d.]+)/i)?.[1];
+  const depth = raw.match(/\/\s*([\d.]+)\s*KM/i)?.[1];
   return {
-    magnitude: match ? `M${match[1]}` : '—',
-    depth: match ? `${match[2]} KM` : '—',
-    eventId: $('targetId')?.textContent || '—',
-    location: $('targetName')?.textContent || '—',
-    updated: $('targetUpdated')?.textContent || '—',
-    source: $('targetSource')?.textContent || 'USGS',
+    magnitude: magnitude ? `M${magnitude}` : '—',
+    depth: depth ? `${depth} KM` : '—',
+    eventId: $('targetId')?.textContent?.trim() || '—',
+    location: $('targetName')?.textContent?.trim() || '—',
+    updated: $('targetUpdated')?.textContent?.trim() || '—',
+    source: $('targetSource')?.textContent?.trim() || 'USGS',
   };
 }
 
@@ -138,19 +146,19 @@ async function enrichTarget(targetKey) {
       if (serial !== requestSerial) return;
       renderDetails([
         { label: 'CALLSIGN', value: data.callsign },
+        { label: 'ICAO HEX', value: data.hex },
         { label: 'REGISTRATION', value: data.registration },
         { label: 'TYPE', value: data.type },
         { label: 'SQUAWK', value: data.squawk },
         { label: 'CATEGORY', value: data.category },
         { label: 'GROUND SPEED', value: data.speed },
         { label: 'TRACK', value: data.track },
-        { label: 'VERT RATE', value: data.verticalRate },
       ]);
     } else if (type === 'SATELLITE') {
       const data = await satelliteDetails(id);
       if (serial !== requestSerial) return;
       renderDetails([
-        { label: 'NORAD', value: id },
+        { label: 'NORAD', value: data.norad || id },
         { label: 'OBJECT', value: data.name },
         { label: 'ORBIT ALT', value: data.altitude },
         { label: 'INCLINATION', value: data.inclination },
