@@ -492,6 +492,7 @@ async function initialize() {
     terrainProvider: undefined,
   });
   state.viewer = viewer;
+  viewer.scene.__gevWebCoreLayers = state.layers;
   viewer.scene.globe.depthTestAgainstTerrain = false;
   viewer.scene.requestRenderMode = false;
   viewer.imageryLayers.addImageryProvider(createOsmImagery());
