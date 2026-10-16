@@ -13,6 +13,7 @@ const state = {
   viewer: null,
   layers: new Map(),
   timers: new Map(),
+  ionTerrainEnabled: false,
 };
 
 applyStoredIonToken();
@@ -161,6 +162,46 @@ function updateIonPanelState() {
   stateEl.dataset.type = status.configured ? 'ok' : 'warn';
 }
 
+function updateIonTerrainControl() {
+  const button = $('ionTerrain');
+  const configured = getIonTokenStatus().configured;
+  button.disabled = !configured;
+  button.classList.toggle('active', state.ionTerrainEnabled);
+  button.textContent = state.ionTerrainEnabled ? 'ION TERRAIN // ON' : 'ION TERRAIN';
+}
+
+async function setIonTerrain(enabled) {
+  if (!state.viewer) return;
+  if (enabled && !getIonTokenStatus().configured) {
+    setStatus('CESIUM ION TOKEN REQUIRED FOR WORLD TERRAIN', 'warn');
+    return;
+  }
+
+  const button = $('ionTerrain');
+  button.disabled = true;
+  setStatus(enabled ? 'LOADING CESIUM WORLD TERRAIN…' : 'RESTORING ELLIPSOID TERRAIN…');
+
+  try {
+    if (enabled) {
+      state.viewer.scene.setTerrain(Cesium.Terrain.fromWorldTerrain());
+      state.ionTerrainEnabled = true;
+      setStatus('CESIUM WORLD TERRAIN ACTIVE', 'ok');
+    } else {
+      state.viewer.scene.setTerrain(new Cesium.Terrain(new Cesium.EllipsoidTerrainProvider()));
+      state.ionTerrainEnabled = false;
+      setStatus('ELLIPSOID TERRAIN ACTIVE', 'ok');
+    }
+  } catch (error) {
+    console.warn('[GEV] Cesium World Terrain unavailable', error);
+    state.ionTerrainEnabled = false;
+    state.viewer.scene.setTerrain(new Cesium.Terrain(new Cesium.EllipsoidTerrainProvider()));
+    setStatus('ION TERRAIN UNAVAILABLE — USING ELLIPSOID', 'warn');
+  } finally {
+    updateIonTerrainControl();
+    state.viewer.scene.requestRender();
+  }
+}
+
 function addIonControls() {
   const panel = $('ionPanel');
   const input = $('ionToken');
@@ -169,6 +210,7 @@ function addIonControls() {
   $('ionSettings').addEventListener('click', () => {
     panel.hidden = false;
     updateIonPanelState();
+    updateIonTerrainControl();
     input.focus();
   });
 
@@ -181,6 +223,7 @@ function addIonControls() {
       saveIonToken(input.value, remember.checked);
       input.value = '';
       updateIonPanelState();
+      updateIonTerrainControl();
       setStatus('CESIUM ION TOKEN SAVED — RELOADING…', 'ok');
       window.setTimeout(() => window.location.reload(), 250);
     } catch (error) {
@@ -192,12 +235,19 @@ function addIonControls() {
   $('ionClear').addEventListener('click', () => {
     clearIonToken();
     input.value = '';
+    state.ionTerrainEnabled = false;
     updateIonPanelState();
+    updateIonTerrainControl();
     setStatus('CESIUM ION TOKEN CLEARED — RELOADING…', 'ok');
     window.setTimeout(() => window.location.reload(), 250);
   });
 
+  $('ionTerrain').addEventListener('click', () => {
+    setIonTerrain(!state.ionTerrainEnabled);
+  });
+
   updateIonPanelState();
+  updateIonTerrainControl();
 }
 
 function addControls() {
