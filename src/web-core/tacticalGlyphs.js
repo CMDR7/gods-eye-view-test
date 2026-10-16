@@ -54,6 +54,14 @@ const GLYPHS = {
       <path class="glyph-contour" d="M6 22c5-8 10-8 15-1s10 7 21-5" />
       <path class="glyph-scan" d="M8 11h32" />
     </svg>`,
+  visuals: `
+    <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+      <circle class="glyph-ring" cx="24" cy="24" r="17" />
+      <circle class="glyph-ring" cx="24" cy="24" r="11" />
+      <circle class="glyph-core" cx="24" cy="24" r="3" />
+      <path class="glyph-scan" d="M24 4v9 M24 35v9 M4 24h9 M35 24h9" />
+      <path class="glyph-sweep" d="M24 7a17 17 0 0 1 15 9" />
+    </svg>`,
 };
 
 const BUTTON_GLYPHS = [
@@ -63,6 +71,7 @@ const BUTTON_GLYPHS = [
   ['aircraft', '[data-layer="aircraft"]', 'AIRCRAFT'],
   ['satellites', '[data-layer="satellites"]', 'SATELLITES'],
   ['earthquakes', '[data-layer="earthquakes"]', 'EARTHQUAKES'],
+  ['visuals', '#visualSettings', 'VISUAL MODES'],
   ['ion', '#ionSettings', 'CESIUM ION'],
   ['terrain', '#ionTerrain', 'ION TERRAIN'],
 ];
