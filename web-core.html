@@ -23,9 +23,31 @@
     <aside id="commandPanel" class="commandPanel" hidden aria-labelledby="commandTitle">
       <div class="commandHeader"><div><div id="commandTitle" class="commandTitle">COMMAND // WEB CORE</div><div class="commandSubtitle">NAVIGATION &amp; INTELLIGENCE LAYERS</div></div><button id="commandClose" class="panelClose" type="button" aria-label="Close command panel">×</button></div>
       <div id="controls" class="controlStack" aria-label="Layer controls">
-        <button id="home" type="button">HOME</button><button id="locate" type="button">MY LOCATION</button><button id="coordinateNav" type="button">COORDINATE NAV</button><button data-layer="aircraft" type="button">AIRCRAFT</button><button data-layer="satellites" type="button">SATELLITES</button><button data-layer="earthquakes" type="button">EARTHQUAKES</button><button id="ionSettings" type="button">CESIUM ION</button><button id="ionTerrain" type="button" disabled>ION TERRAIN</button>
+        <button id="home" type="button">HOME</button><button id="locate" type="button">MY LOCATION</button><button id="coordinateNav" type="button">COORDINATE NAV</button><button data-layer="aircraft" type="button">AIRCRAFT</button><button data-layer="satellites" type="button">SATELLITES</button><button data-layer="earthquakes" type="button">EARTHQUAKES</button><button id="visualSettings" type="button">VISUALS</button><button id="ionSettings" type="button">CESIUM ION</button><button id="ionTerrain" type="button" disabled>ION TERRAIN</button>
       </div>
     </aside>
+    <section id="visualPanel" class="panel visualPanel" hidden aria-labelledby="visualTitle">
+      <div class="panelHeader"><div><div id="visualTitle">VIEW // VISUAL SYSTEM</div><div class="visualSubtitle">OPTICS &amp; HUD PRESENTATION</div></div><button id="visualClose" class="panelClose" type="button" aria-label="Close visual controls">×</button></div>
+      <div class="visualSection">
+        <div class="visualSectionTitle">OPTICS</div>
+        <div class="visualGrid" role="group" aria-label="Optics modes">
+          <button type="button" data-visual-mode="normal" aria-pressed="false"><span class="visualDot"></span>NORMAL</button>
+          <button type="button" data-visual-mode="nvg" aria-pressed="false"><span class="visualDot"></span>NVG</button>
+          <button type="button" data-visual-mode="flir" aria-pressed="false"><span class="visualDot"></span>FLIR</button>
+          <button type="button" data-visual-mode="crt" aria-pressed="false"><span class="visualDot"></span>CRT</button>
+        </div>
+      </div>
+      <div class="visualSection">
+        <div class="visualSectionTitle">HUD LAYOUT</div>
+        <div class="visualGrid" role="group" aria-label="HUD layouts">
+          <button type="button" data-hud-layout="tactical" aria-pressed="false">TACTICAL</button>
+          <button type="button" data-hud-layout="operator" aria-pressed="false">OPERATOR</button>
+          <button type="button" data-hud-layout="minimal" aria-pressed="false">MINIMAL</button>
+          <button type="button" data-hud-layout="cyber" aria-pressed="false">CYBER</button>
+        </div>
+      </div>
+      <div class="panelState">VISUAL MODES ARE CLIENT-SIDE ONLY // DATA &amp; TARGET STATE UNCHANGED</div>
+    </section>
     <section id="targetPanel" class="panel targetPanel" hidden aria-labelledby="targetTitle">
       <div class="panelHeader"><div id="targetTitle">TARGET // INSPECTION</div><button id="targetClose" class="panelClose" type="button" aria-label="Close target panel">×</button></div>
       <div class="targetIdentity"><div id="targetType" class="targetType">UNKNOWN</div><div id="targetName" class="targetName">UNKNOWN TARGET</div></div>
@@ -50,6 +72,7 @@
   <script type="module" src="/src/web-core/nativeSatelliteLayer.js"></script>
   <script type="module" src="/src/web-core/navigationControls.js"></script>
   <script type="module" src="/src/web-core/tacticalGlyphs.js"></script>
+  <script type="module" src="/src/web-core/visualModes.js"></script>
   <script type="module" src="/src/web-core/cityNav.js"></script>
   <script type="module" src="/src/web-core/targetIntelligence.js"></script>
 </body>
