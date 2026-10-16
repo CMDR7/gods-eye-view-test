@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#05070a" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <title>GOD'S EYE VIEW // WEB CORE</title>
+</head>
+<body>
+  <div id="app">
+    <div id="cesiumContainer"></div>
+    <div id="hud">
+      <div id="brand">GOD'S EYE // WEB CORE</div>
+      <div id="controls" aria-label="Layer controls">
+        <button id="home" type="button">HOME</button>
+        <button id="locate" type="button">MY LOCATION</button>
+        <button data-layer="aircraft" type="button">AIRCRAFT</button>
+        <button data-layer="satellites" type="button">SATELLITES</button>
+        <button data-layer="earthquakes" type="button">EARTHQUAKES</button>
+      </div>
+      <div id="status" role="status">BOOTING…</div>
+    </div>
+  </div>
+  <script type="module" src="/src/web-core/main.js"></script>
+</body>
+</html>
