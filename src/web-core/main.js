@@ -331,7 +331,8 @@ function selectTarget(entity) {
   state.viewer.scene.requestRender();
 }
 
-function pickEntity(windowPosition) {
+function pickEntity(windowPosition, directTarget) {
+  if (directTarget?.gevMeta) return directTarget;
   const picked = state.viewer.scene.pick(windowPosition);
   if (!Cesium.defined(picked)) return undefined;
   const id = Cesium.defaultValue(picked.id, picked.primitive?.id);
@@ -340,7 +341,7 @@ function pickEntity(windowPosition) {
 
 function addTargetInteraction() {
   state.viewer.screenSpaceEventHandler.setInputAction((movement) => {
-    const entity = pickEntity(movement.position);
+    const entity = pickEntity(movement.position, movement.__gevTarget);
     if (entity) selectTarget(entity);
     else clearSelectedTarget();
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
@@ -359,10 +360,7 @@ async function flyToSelectedTarget() {
     duration: 1.0,
     offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-35), 0),
   });
-  if (completed && state.selectedEntity === entity) {
-    state.viewer.scene.requestRender();
-    setStatus(`TARGET LOCKED // ${entity.gevMeta?.name || entity.id}`, 'ok');
-  }
+  if (completed) setStatus(`TARGET LOCKED // ${entity.gevMeta?.type || 'GEV'}`, 'ok');
 }
 
 function toggleTargetTracking() {
@@ -371,408 +369,94 @@ function toggleTargetTracking() {
   if (state.viewer.trackedEntity === entity) {
     state.viewer.trackedEntity = undefined;
     $('targetTrack').textContent = 'TRACK';
-    setStatus('TARGET TRACKING DISABLED', 'ok');
-  } else {
-    state.viewer.trackedEntity = entity;
-    $('targetTrack').textContent = 'UNTRACK';
-    setStatus(`TRACKING TARGET // ${entity.gevMeta?.name || entity.id}`, 'ok');
-  }
-  state.viewer.scene.requestRender();
-}
-
-function addTargetControls() {
-  $('targetClose').addEventListener('click', clearSelectedTarget);
-  $('targetClear').addEventListener('click', clearSelectedTarget);
-  $('targetFly').addEventListener('click', () => flyToSelectedTarget());
-  $('targetTrack').addEventListener('click', toggleTargetTracking);
-}
-
-function parseCoordinateInput() {
-  const lat = Number.parseFloat($('coordinateLat').value);
-  const lon = Number.parseFloat($('coordinateLon').value);
-  const altRaw = $('coordinateAlt').value.trim();
-  const altitude = altRaw === '' ? DEFAULT_NAV_ALTITUDE : Number.parseFloat(altRaw);
-  if (!Number.isFinite(lat) || lat < -90 || lat > 90) return { error: 'LATITUDE MUST BE BETWEEN -90 AND 90' };
-  if (!Number.isFinite(lon) || lon < -180 || lon > 180) return { error: 'LONGITUDE MUST BE BETWEEN -180 AND 180' };
-  if (!Number.isFinite(altitude) || altitude < 0) return { error: 'ALTITUDE MUST BE ZERO OR GREATER' };
-  return { lat, lon, altitude };
-}
-
-function setCoordinateState(message, type = 'info') {
-  const el = $('coordinateState');
-  el.textContent = message;
-  el.dataset.type = type;
-}
-
-function openCoordinatePanel() {
-  closeCommandPanel();
-  const panel = $('coordinatePanel');
-  panel.hidden = false;
-  setCoordinateState('READY // DECIMAL COORDINATES');
-  window.setTimeout(() => $('coordinateLat').focus(), 0);
-}
-
-function closeCoordinatePanel() {
-  $('coordinatePanel').hidden = true;
-}
-
-function flyToCoordinates() {
-  const result = parseCoordinateInput();
-  if (result.error) {
-    setCoordinateState(result.error, 'warn');
-    setStatus(`NAVIGATION INPUT ERROR // ${result.error}`, 'warn');
+    setStatus('TARGET TRACKING OFF');
     return;
   }
-  const { lat, lon, altitude } = result;
-  setCoordinateState(`LOCKED // ${lat.toFixed(5)}, ${lon.toFixed(5)}`, 'ok');
-  setStatus('NAVIGATING TO COORDINATES…');
-  state.viewer.trackedEntity = undefined;
-  state.viewer.camera.flyTo({
-    destination: Cesium.Cartesian3.fromDegrees(lon, lat, altitude),
-    orientation: { heading: 0, pitch: Cesium.Math.toRadians(-35), roll: 0 },
-    duration: 1.5,
-    complete: () => {
-      setStatus(`COORDINATE LOCKED // ${lat.toFixed(4)}, ${lon.toFixed(4)}`, 'ok');
-      state.viewer.scene.requestRender();
-    },
-    cancel: () => setStatus('COORDINATE FLIGHT CANCELLED', 'warn'),
-  });
+  state.viewer.trackedEntity = entity;
+  $('targetTrack').textContent = 'UNTRACK';
+  setStatus(`TRACKING // ${entity.gevMeta?.type || 'GEV'}`, 'ok');
 }
 
-function useCurrentLocationForCoordinates() {
-  if (!navigator.geolocation) {
-    setCoordinateState('GEOLOCATION UNAVAILABLE', 'warn');
-    setStatus('Geolocation is not available', 'warn');
-    return;
-  }
-  setCoordinateState('ACQUIRING POSITION…');
-  navigator.geolocation.getCurrentPosition(
-    ({ coords }) => {
-      $('coordinateLat').value = coords.latitude.toFixed(6);
-      $('coordinateLon').value = coords.longitude.toFixed(6);
-      setCoordinateState('CURRENT LOCATION LOADED', 'ok');
-      setStatus('CURRENT LOCATION LOADED INTO NAVIGATION', 'ok');
-    },
-    () => {
-      setCoordinateState('LOCATION PERMISSION DENIED', 'warn');
-      setStatus('Location permission denied or unavailable', 'warn');
-    },
-    { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 },
-  );
+function copyTargetCoordinates() {
+  const value = $('targetPosition')?.textContent || '';
+  if (!value || value === '—') return;
+  navigator.clipboard?.writeText(value).then(() => setStatus('TARGET COORDINATES COPIED', 'ok')).catch(() => setStatus('CLIPBOARD UNAVAILABLE', 'warn'));
 }
 
-async function copyCoordinateInput() {
-  const result = parseCoordinateInput();
-  if (result.error) {
-    setCoordinateState(result.error, 'warn');
-    return;
-  }
-  const text = `${result.lat.toFixed(6)}, ${result.lon.toFixed(6)}${$('coordinateAlt').value.trim() ? `, ${result.altitude.toFixed(0)} m` : ''}`;
-  try {
-    await navigator.clipboard.writeText(text);
-    setCoordinateState('COPIED // ' + text, 'ok');
-    setStatus('COORDINATES COPIED TO CLIPBOARD', 'ok');
-  } catch {
-    setCoordinateState('CLIPBOARD UNAVAILABLE', 'warn');
-    setStatus('Clipboard access unavailable in this browser', 'warn');
-  }
+function toggleCommandPanel(force) {
+  const panel = $('commandPanel');
+  if (!panel) return;
+  state.commandPanelOpen = typeof force === 'boolean' ? force : !state.commandPanelOpen;
+  panel.classList.toggle('open', state.commandPanelOpen);
+  panel.setAttribute('aria-hidden', String(!state.commandPanelOpen));
+  $('menuToggle')?.setAttribute('aria-expanded', String(state.commandPanelOpen));
 }
 
-function addCoordinateControls() {
-  $('coordinateNav').addEventListener('click', openCoordinatePanel);
-  $('coordinateClose').addEventListener('click', closeCoordinatePanel);
-  $('coordinateFly').addEventListener('click', flyToCoordinates);
-  $('coordinateLocation').addEventListener('click', useCurrentLocationForCoordinates);
-  $('coordinateCopy').addEventListener('click', copyCoordinateInput);
-  ['coordinateLat', 'coordinateLon', 'coordinateAlt'].forEach((id) => {
-    $(id).addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') flyToCoordinates();
+function addCoordinateNavigation() {
+  const parse = () => {
+    const lat = Number.parseFloat($('coordinateLat').value);
+    const lon = Number.parseFloat($('coordinateLon').value);
+    const altRaw = $('coordinateAlt').value.trim();
+    const altitude = altRaw === '' ? DEFAULT_NAV_ALTITUDE : Number.parseFloat(altRaw);
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90) return { error: 'LATITUDE MUST BE BETWEEN -90 AND 90' };
+    if (!Number.isFinite(lon) || lon < -180 || lon > 180) return { error: 'LONGITUDE MUST BE BETWEEN -180 AND 180' };
+    if (!Number.isFinite(altitude) || altitude < 0) return { error: 'ALTITUDE MUST BE ZERO OR GREATER' };
+    return { lat, lon, altitude };
+  };
+  const fly = () => {
+    const result = parse();
+    if (result.error) {
+      setStatus(`NAVIGATION INPUT ERROR // ${result.error}`, 'warn');
+      return;
+    }
+    state.viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(result.lon, result.lat, result.altitude),
+      orientation: { heading: 0, pitch: Cesium.Math.toRadians(-35), roll: 0 },
+      duration: 1.5,
     });
-  });
-}
-
-function updateIonPanelState() {
-  const status = getIonTokenStatus();
-  const stateEl = $('ionState');
-  const input = $('ionToken');
-  const connect = $('ionConnect');
-  const remember = $('ionRemember');
-  const description = $('ionDescription');
-  stateEl.textContent = status.configured
-    ? status.persisted ? 'USER TOKEN CONFIGURED // DEVICE STORAGE' : 'USER TOKEN CONFIGURED // SESSION ONLY'
-    : 'NO USER TOKEN CONFIGURED';
-  stateEl.dataset.type = status.configured ? 'ok' : 'warn';
-  input.placeholder = status.configured ? 'TOKEN STORED — ENTER NEW TOKEN TO REPLACE' : 'Paste Cesium Ion token';
-  connect.textContent = status.configured ? 'REPLACE TOKEN' : 'CONNECT';
-  connect.disabled = status.configured && !input.value.trim();
-  remember.checked = status.persisted || !status.configured;
-  description.textContent = status.configured
-    ? 'A Cesium Ion token is active in this browser. It is not displayed here. Enter a new token only if you want to replace it.'
-    : 'Enter your own Cesium Ion access token. The token is used directly by this browser and is never sent to a GEV server.';
-}
-
-function updateIonTerrainControl() {
-  const button = $('ionTerrain');
-  const configured = getIonTokenStatus().configured;
-  button.disabled = !configured;
-  button.classList.toggle('active', state.ionTerrainEnabled);
-  button.textContent = state.ionTerrainEnabled ? 'ION TERRAIN // ON' : 'ION TERRAIN';
-}
-
-function classifyIonTerrainError(error) {
-  const message = String(error?.message ?? error ?? '').toLowerCase();
-  if (message.includes('401') || message.includes('unauthorized') || message.includes('invalid_token')) return 'ION TERRAIN ERROR // 401 AUTHORIZATION';
-  if (message.includes('403') || message.includes('forbidden')) return 'ION TERRAIN ERROR // 403 ACCESS DENIED';
-  if (message.includes('404') || message.includes('not found')) return 'ION TERRAIN ERROR // 404 ASSET NOT FOUND';
-  if (message.includes('timeout')) return 'ION TERRAIN ERROR // REQUEST TIMEOUT';
-  return 'ION TERRAIN ERROR // REQUEST FAILED';
-}
-
-async function setIonTerrain(enabled) {
-  if (!state.viewer) return;
-  if (enabled && !getIonTokenStatus().configured) {
-    setStatus('CESIUM ION TOKEN REQUIRED FOR WORLD TERRAIN', 'warn');
-    return;
-  }
-  const button = $('ionTerrain');
-  button.disabled = true;
-  setStatus(enabled ? 'LOADING CESIUM WORLD TERRAIN…' : 'RESTORING ELLIPSOID TERRAIN…');
-  try {
-    if (enabled) {
-      const terrainProvider = await Promise.race([
-        Cesium.createWorldTerrainAsync(),
-        new Promise((_, reject) => window.setTimeout(() => reject(new Error('timeout')), ION_TERRAIN_TIMEOUT_MS)),
-      ]);
-      state.viewer.scene.setTerrain(new Cesium.Terrain(terrainProvider));
-      state.ionTerrainEnabled = true;
-      setStatus('CESIUM WORLD TERRAIN ACTIVE', 'ok');
-    } else {
-      state.viewer.scene.terrainProvider = new Cesium.EllipsoidTerrainProvider();
-      state.ionTerrainEnabled = false;
-      setStatus('ELLIPSOID TERRAIN ACTIVE', 'ok');
+    setStatus(`NAVIGATION LOCK // ${result.lat.toFixed(5)} ${result.lon.toFixed(5)}`, 'ok');
+  };
+  $('coordinateFly')?.addEventListener('click', fly);
+  $('coordinateAlt')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') fly(); });
+  $('coordinateLat')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') fly(); });
+  $('coordinateLon')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') fly(); });
+  $('coordinateMyLocation')?.addEventListener('click', () => {
+    if (!navigator.geolocation) {
+      setStatus('LOCATION API UNAVAILABLE', 'warn');
+      return;
     }
-  } catch (error) {
-    console.warn('[GEV] Cesium World Terrain unavailable', error);
-    state.ionTerrainEnabled = false;
-    state.viewer.scene.terrainProvider = new Cesium.EllipsoidTerrainProvider();
-    setStatus(classifyIonTerrainError(error), 'warn');
-  } finally {
-    updateIonTerrainControl();
-    state.viewer.scene.requestRender();
-  }
-}
-
-function openCommandPanel() {
-  const panel = $('commandPanel');
-  const backdrop = $('commandBackdrop');
-  const toggle = $('menuToggle');
-  if (state.commandPanelOpen) return;
-  state.commandPanelOpen = true;
-  panel.hidden = false;
-  backdrop.hidden = false;
-  toggle.setAttribute('aria-expanded', 'true');
-  toggle.setAttribute('aria-label', 'Close command panel');
-  requestAnimationFrame(() => {
-    panel.classList.add('open');
-    backdrop.classList.add('open');
+    navigator.geolocation.getCurrentPosition((position) => {
+      $('coordinateLat').value = position.coords.latitude.toFixed(6);
+      $('coordinateLon').value = position.coords.longitude.toFixed(6);
+      setStatus('CURRENT LOCATION ACQUIRED', 'ok');
+    }, () => setStatus('CURRENT LOCATION UNAVAILABLE', 'warn'), { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+  });
+  $('coordinateCopy')?.addEventListener('click', () => {
+    const value = `${$('coordinateLat').value}, ${$('coordinateLon').value}`;
+    navigator.clipboard?.writeText(value).then(() => setStatus('COORDINATES COPIED', 'ok')).catch(() => setStatus('CLIPBOARD UNAVAILABLE', 'warn'));
   });
 }
 
-function closeCommandPanel() {
-  const panel = $('commandPanel');
-  const backdrop = $('commandBackdrop');
-  const toggle = $('menuToggle');
-  if (!state.commandPanelOpen) return;
-  state.commandPanelOpen = false;
-  panel.classList.remove('open');
-  backdrop.classList.remove('open');
-  toggle.setAttribute('aria-expanded', 'false');
-  toggle.setAttribute('aria-label', 'Open command panel');
-  window.setTimeout(() => {
-    if (!state.commandPanelOpen) {
-      panel.hidden = true;
-      backdrop.hidden = true;
-    }
-  }, DRAWER_TRANSITION_MS);
-}
-
-function addCommandPanelControls() {
-  $('menuToggle').addEventListener('click', () => {
-    state.commandPanelOpen ? closeCommandPanel() : openCommandPanel();
-  });
-  $('commandClose').addEventListener('click', closeCommandPanel);
-  $('commandBackdrop').addEventListener('click', closeCommandPanel);
-}
-
-function addIonControls() {
-  const panel = $('ionPanel');
-  const input = $('ionToken');
-  const remember = $('ionRemember');
-  $('ionSettings').addEventListener('click', () => {
-    closeCommandPanel();
-    panel.hidden = false;
-    updateIonPanelState();
-    updateIonTerrainControl();
-    if (!getIonTokenStatus().configured) input.focus();
-  });
-  $('ionClose').addEventListener('click', () => { panel.hidden = true; });
-  input.addEventListener('input', updateIonPanelState);
-  $('ionConnect').addEventListener('click', () => {
-    try {
-      saveIonToken(input.value, remember.checked);
-      input.value = '';
-      updateIonPanelState();
-      updateIonTerrainControl();
-      setStatus('CESIUM ION TOKEN SAVED — RELOADING…', 'ok');
-      window.setTimeout(() => window.location.reload(), 250);
-    } catch (error) {
-      updateIonPanelState();
-      setStatus(error.message, 'warn');
-    }
-  });
-  $('ionClear').addEventListener('click', () => {
-    clearIonToken();
-    input.value = '';
-    state.ionTerrainEnabled = false;
-    updateIonPanelState();
-    updateIonTerrainControl();
-    setStatus('CESIUM ION TOKEN CLEARED — RELOADING…', 'ok');
-    window.setTimeout(() => window.location.reload(), 250);
-  });
-  $('ionTerrain').addEventListener('click', () => setIonTerrain(!state.ionTerrainEnabled));
-  updateIonPanelState();
-  updateIonTerrainControl();
-}
-
-function addControls() {
-  addCommandPanelControls();
-  document.querySelectorAll('[data-layer]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const id = button.dataset.layer;
-      const enabled = !state.layers.get(id)?.enabled;
+function addLayerControls() {
+  const definitions = [
+    ['earthquakes', 'EARTHQUAKES', Cesium.Color.YELLOW, loadEarthquakes, REFRESH_MS],
+    ['aircraft', 'AIRCRAFT', Cesium.Color.CYAN, loadAircraft, REFRESH_MS],
+    ['satellites', 'SATELLITES', Cesium.Color.LIME, loadSatellites, SATELLITE_REFRESH_MS],
+  ];
+  for (const [id, name, color, loader, interval] of definitions) {
+    addLayer(id, name, color);
+    document.querySelector(`[data-layer="${id}"]`)?.addEventListener('click', () => {
+      const layer = state.layers.get(id);
+      const enabled = !layer.enabled;
       setLayerEnabled(id, enabled);
-      if (enabled) {
-        const loader = id === 'earthquakes' ? loadEarthquakes : id === 'aircraft' ? loadAircraft : loadSatellites;
-        const interval = id === 'satellites' ? SATELLITE_REFRESH_MS : REFRESH_MS;
-        schedule(id, loader, interval);
-      } else {
-        clearLayer(id);
-        const timer = state.timers.get(id);
-        if (timer) clearInterval(timer);
-        state.timers.delete(id);
-      }
+      if (enabled) schedule(id, loader, interval);
+      else clearLayer(id);
     });
-  });
-  $('home').addEventListener('click', focusHome);
-  $('locate').addEventListener('click', () => {
-    if (!navigator.geolocation) return setStatus('Geolocation is not available', 'warn');
-    navigator.geolocation.getCurrentPosition(
-      ({ coords }) => state.viewer.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(coords.longitude, coords.latitude, 120000) }),
-      () => setStatus('Location permission denied or unavailable', 'warn'),
-      { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 },
-    );
-  });
-  addCoordinateControls();
-  addIonControls();
-  addTargetControls();
-  window.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape') return;
-    if (state.commandPanelOpen) { closeCommandPanel(); return; }
-    if (!$('coordinatePanel').hidden) { closeCoordinatePanel(); return; }
-    if (!$('ionPanel').hidden) { $('ionPanel').hidden = true; return; }
-    clearSelectedTarget();
-  });
+  }
 }
 
-function addTelemetryHud() {
-  const hud = document.createElement('section');
-  hud.className = 'telemetryHud';
-  hud.setAttribute('aria-label', 'Camera telemetry');
-  const labels = ['LAT', 'LON', 'ALT', 'HDG', 'RNG'];
-  labels.forEach((label) => {
-    const item = document.createElement('div');
-    item.className = 'telemetryReadout';
-    const title = document.createElement('span');
-    title.textContent = label;
-    const value = document.createElement('strong');
-    value.dataset.telemetry = label;
-    value.textContent = '—';
-    item.append(title, value);
-    hud.appendChild(item);
-  });
-  document.body.appendChild(hud);
-
-  const style = document.createElement('style');
-  style.textContent = [
-    '.telemetryHud {',
-    '  position: fixed;',
-    '  z-index: 20;',
-    '  left: 50%;',
-    '  bottom: calc(12px + env(safe-area-inset-bottom));',
-    '  transform: translateX(-50%);',
-    '  width: min(620px, calc(100vw - 24px));',
-    '  display: grid;',
-    '  grid-template-columns: repeat(5, minmax(0, 1fr));',
-    '  gap: 5px;',
-    '  padding: 5px;',
-    '  border: 1px solid rgba(80, 210, 255, .2);',
-    '  border-radius: 8px;',
-    '  background: rgba(3, 9, 13, .64);',
-    '  box-shadow: 0 8px 28px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(130, 235, 255, .12);',
-    '  backdrop-filter: blur(12px) saturate(120%);',
-    '  -webkit-backdrop-filter: blur(12px) saturate(120%);',
-    '  pointer-events: none;',
-    '  user-select: none;',
-    '}',
-    '.telemetryReadout { min-width: 0; padding: 5px 6px 4px; border: 1px solid rgba(100, 220, 255, .09); border-radius: 5px; background: rgba(0, 0, 0, .22); box-shadow: inset 0 1px 0 rgba(120, 230, 255, .07); }',
-    '.telemetryReadout span { display: block; margin-bottom: 3px; font: 600 7px/1 Orbitron, sans-serif; letter-spacing: .12em; color: #647b86; }',
-    '.telemetryReadout strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 9px/1.1 Orbitron, sans-serif; letter-spacing: .02em; color: #dffaff; text-shadow: 0 0 8px rgba(90, 220, 255, .18); }',
-    '@media (max-width: 520px) { .telemetryHud { bottom: calc(8px + env(safe-area-inset-bottom)); width: calc(100vw - 16px); gap: 3px; padding: 4px; } .telemetryReadout { padding: 4px 4px 3px; } .telemetryReadout span { font-size: 6px; } .telemetryReadout strong { font-size: 7px; } }',
-  ].join('\n');
-  document.head.appendChild(style);
-
-  const fields = Object.fromEntries(labels.map((key) => [key, hud.querySelector(`[data-telemetry="${key}"]`)]));
-  const formatTelemetry = (value, digits = 1) => Number.isFinite(value) ? value.toLocaleString(undefined, { maximumFractionDigits: digits }) : '—';
-  const update = () => {
-    const camera = state.viewer?.camera;
-    const scene = state.viewer?.scene;
-    if (!camera || !scene) return;
-    const cartographic = camera.positionCartographic;
-    const lat = Cesium.Math.toDegrees(cartographic.latitude);
-    const lon = Cesium.Math.toDegrees(cartographic.longitude);
-    const heading = Cesium.Math.toDegrees(Cesium.Math.zeroToTwoPi(camera.heading));
-    const altitude = cartographic.height;
-    fields.LAT.textContent = Math.abs(lat).toFixed(4) + '° ' + (lat >= 0 ? 'N' : 'S');
-    fields.LON.textContent = Math.abs(lon).toFixed(4) + '° ' + (lon >= 0 ? 'E' : 'W');
-    fields.ALT.textContent = formatTelemetry(altitude, 0) + ' M';
-    fields.HDG.textContent = formatTelemetry(heading, 0) + '°';
-    let range = Number.NaN;
-    try {
-      const center = new Cesium.Cartesian2(scene.canvas.clientWidth / 2, scene.canvas.clientHeight / 2);
-      const ray = camera.getPickRay(center);
-      const surface = ray ? scene.globe.pick(ray, scene) : undefined;
-      if (surface) range = Cesium.Cartesian3.distance(camera.position, surface);
-    } catch { range = Number.NaN; }
-    fields.RNG.textContent = Number.isFinite(range) ? formatTelemetry(range / 1000, range >= 100000 ? 0 : 1) + ' KM' : '—';
-  };
-  let queued = false;
-  const queueUpdate = () => {
-    if (queued) return;
-    queued = true;
-    window.requestAnimationFrame(() => { queued = false; update(); });
-  };
-  state.viewer.camera.changed.addEventListener(queueUpdate);
-  state.viewer.camera.moveEnd.addEventListener(queueUpdate);
-  state.viewer.scene.postRender.addEventListener(update);
-  update();
-}
-
-async function boot() {
-  setStatus('INITIALIZING GLOBE…');
-  state.viewer = new Cesium.Viewer('cesiumContainer', {
-    baseLayer: new Cesium.ImageryLayer(createOsmImagery()),
-    baseLayerPicker: false,
-    terrainProvider: new Cesium.EllipsoidTerrainProvider(),
+async function initialize() {
+  const viewer = new Cesium.Viewer('globe', {
     animation: false,
     timeline: false,
     geocoder: false,
@@ -780,29 +464,73 @@ async function boot() {
     sceneModePicker: false,
     navigationHelpButton: false,
     fullscreenButton: false,
-    vrButton: false,
     selectionIndicator: false,
     infoBox: false,
-    scene3DOnly: true,
-    requestRenderMode: true,
-    maximumRenderTimeChange: Infinity,
-    msaaSamples: 2,
+    baseLayerPicker: false,
+    terrainProvider: undefined,
   });
-  state.viewer.scene.globe.show = true;
-  state.viewer.scene.skyAtmosphere.show = true;
-  state.viewer.scene.requestRender();
-  addTelemetryHud();
-  addLayer('aircraft', 'AIRCRAFT', Cesium.Color.CYAN);
-  addLayer('satellites', 'SATELLITES', Cesium.Color.LIME);
-  addLayer('earthquakes', 'EARTHQUAKES', Cesium.Color.ORANGE);
+  state.viewer = viewer;
+  viewer.scene.globe.depthTestAgainstTerrain = false;
+  viewer.scene.requestRenderMode = false;
+  viewer.imageryLayers.addImageryProvider(createOsmImagery());
+  viewer.camera.setView({ destination: Cesium.Cartesian3.fromDegrees(10, 50, 3_500_000), orientation: { heading: 0, pitch: Cesium.Math.toRadians(-60), roll: 0 } });
+
+  addLayerControls();
   addTargetInteraction();
-  addControls();
-  focusHome();
-  const ionStatus = getIonTokenStatus();
-  setStatus(ionStatus.configured ? 'READY — CESIUM ION USER TOKEN' : 'READY — NO BACKEND', 'ok');
+  addCoordinateNavigation();
+  $('targetFly')?.addEventListener('click', flyToSelectedTarget);
+  $('targetTrack')?.addEventListener('click', toggleTargetTracking);
+  $('targetClear')?.addEventListener('click', clearSelectedTarget);
+  $('targetCopy')?.addEventListener('click', copyTargetCoordinates);
+  $('menuToggle')?.addEventListener('click', () => toggleCommandPanel());
+  $('commandClose')?.addEventListener('click', () => toggleCommandPanel(false));
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') toggleCommandPanel(false);
+  });
+  document.addEventListener('click', (event) => {
+    const panel = $('commandPanel');
+    if (state.commandPanelOpen && panel && !panel.contains(event.target) && event.target !== $('menuToggle')) toggleCommandPanel(false);
+  });
+
+  try {
+    const ionStatus = getIonTokenStatus();
+    if (ionStatus.configured) {
+      const terrainPromise = Cesium.createWorldTerrainAsync?.();
+      if (terrainPromise) {
+        const terrainProvider = await Promise.race([
+          terrainPromise,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('ION TERRAIN TIMEOUT')), ION_TERRAIN_TIMEOUT_MS)),
+        ]);
+        viewer.terrainProvider = terrainProvider;
+        state.ionTerrainEnabled = true;
+        setStatus('WORLD TERRAIN ONLINE // CESIUM ION', 'ok');
+      }
+    } else {
+      setStatus('WEB CORE READY // ION TOKEN NOT CONFIGURED', 'warn');
+    }
+  } catch (error) {
+    console.warn('[GEV] Ion terrain unavailable', error);
+    setStatus('ION TERRAIN ERROR // 403 ACCESS DENIED', 'warn');
+  }
+
+  $('ionSave')?.addEventListener('click', () => {
+    try {
+      saveIonToken($('ionToken').value, $('ionPersist')?.checked !== false);
+      setStatus('ION TOKEN SAVED // RELOADING TERRAIN', 'ok');
+      location.reload();
+    } catch (error) {
+      setStatus(`ION TOKEN ERROR // ${error.message}`, 'warn');
+    }
+  });
+  $('ionClear')?.addEventListener('click', () => {
+    clearIonToken();
+    setStatus('ION TOKEN CLEARED // RELOADING', 'ok');
+    location.reload();
+  });
 }
 
-boot().catch((error) => {
-  console.error(error);
-  setStatus(`BOOT FAILURE: ${error.message}`, 'error');
-});
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initialize, { once: true });
+} else {
+  initialize();
+}
