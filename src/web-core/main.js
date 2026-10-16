@@ -8,6 +8,7 @@ import './style.css';
 const REFRESH_MS = 60_000;
 const SATELLITE_REFRESH_MS = 2 * 60 * 60 * 1000;
 const MAX_SATELLITES = 1500;
+const ION_TERRAIN_TIMEOUT_MS = 15_000;
 
 const state = {
   viewer: null,
@@ -156,10 +157,25 @@ function focusHome() {
 function updateIonPanelState() {
   const status = getIonTokenStatus();
   const stateEl = $('ionState');
+  const input = $('ionToken');
+  const connect = $('ionConnect');
+  const remember = $('ionRemember');
+  const description = $('ionDescription');
+
   stateEl.textContent = status.configured
     ? status.persisted ? 'USER TOKEN CONFIGURED // DEVICE STORAGE' : 'USER TOKEN CONFIGURED // SESSION ONLY'
     : 'NO USER TOKEN CONFIGURED';
   stateEl.dataset.type = status.configured ? 'ok' : 'warn';
+
+  input.placeholder = status.configured
+    ? 'TOKEN STORED — ENTER NEW TOKEN TO REPLACE'
+    : 'Paste Cesium Ion token';
+  connect.textContent = status.configured ? 'REPLACE TOKEN' : 'CONNECT';
+  connect.disabled = status.configured && !input.value.trim();
+  remember.checked = status.persisted || !status.configured;
+  description.textContent = status.configured
+    ? 'A Cesium Ion token is active in this browser. It is not displayed here. Enter a new token only if you want to replace it.'
+    : 'Enter your own Cesium Ion access token. The token is used directly by this browser and is never sent to a GEV server.';
 }
 
 function updateIonTerrainControl() {
@@ -170,13 +186,21 @@ function updateIonTerrainControl() {
   button.textContent = state.ionTerrainEnabled ? 'ION TERRAIN // ON' : 'ION TERRAIN';
 }
 
-function waitForTerrainReady(terrain) {
-  return new Promise((resolve, reject) => {
-    const onReady = (provider) => resolve(provider);
-    const onError = (error) => reject(error);
-    terrain.readyEvent.addEventListener(onReady);
-    terrain.errorEvent.addEventListener(onError);
-  });
+function classifyIonTerrainError(error) {
+  const message = String(error?.message ?? error ?? '').toLowerCase();
+  if (message.includes('401') || message.includes('unauthorized') || message.includes('invalid_token')) {
+    return 'ION TERRAIN ERROR // 401 AUTHORIZATION';
+  }
+  if (message.includes('403') || message.includes('forbidden')) {
+    return 'ION TERRAIN ERROR // 403 ACCESS DENIED';
+  }
+  if (message.includes('404') || message.includes('not found')) {
+    return 'ION TERRAIN ERROR // 404 ASSET NOT FOUND';
+  }
+  if (message.includes('timeout')) {
+    return 'ION TERRAIN ERROR // REQUEST TIMEOUT';
+  }
+  return 'ION TERRAIN ERROR // REQUEST FAILED';
 }
 
 async function setIonTerrain(enabled) {
@@ -192,9 +216,11 @@ async function setIonTerrain(enabled) {
 
   try {
     if (enabled) {
-      const terrain = Cesium.Terrain.fromWorldTerrain();
-      state.viewer.scene.setTerrain(terrain);
-      await waitForTerrainReady(terrain);
+      const terrainProvider = await Promise.race([
+        Cesium.createWorldTerrainAsync(),
+        new Promise((_, reject) => window.setTimeout(() => reject(new Error('timeout')), ION_TERRAIN_TIMEOUT_MS)),
+      ]);
+      state.viewer.scene.setTerrain(new Cesium.Terrain(terrainProvider));
       state.ionTerrainEnabled = true;
       setStatus('CESIUM WORLD TERRAIN ACTIVE', 'ok');
     } else {
@@ -206,7 +232,7 @@ async function setIonTerrain(enabled) {
     console.warn('[GEV] Cesium World Terrain unavailable', error);
     state.ionTerrainEnabled = false;
     state.viewer.scene.terrainProvider = new Cesium.EllipsoidTerrainProvider();
-    setStatus('ION TERRAIN UNAVAILABLE — USING ELLIPSOID', 'warn');
+    setStatus(classifyIonTerrainError(error), 'warn');
   } finally {
     updateIonTerrainControl();
     state.viewer.scene.requestRender();
@@ -222,11 +248,15 @@ function addIonControls() {
     panel.hidden = false;
     updateIonPanelState();
     updateIonTerrainControl();
-    input.focus();
+    if (!getIonTokenStatus().configured) input.focus();
   });
 
   $('ionClose').addEventListener('click', () => {
     panel.hidden = true;
+  });
+
+  input.addEventListener('input', () => {
+    updateIonPanelState();
   });
 
   $('ionConnect').addEventListener('click', () => {
