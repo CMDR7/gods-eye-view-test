@@ -96,6 +96,32 @@ function ensureStage(scene) {
   }
 }
 
+function ensureHudOverlay() {
+  if (document.getElementById('gevHudOverlay')) return;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'gevHudOverlay';
+  overlay.className = 'gevHudOverlay';
+  overlay.setAttribute('aria-hidden', 'true');
+  overlay.innerHTML = `
+    <div class="gevHudFrame gevHudFrame--tl"></div>
+    <div class="gevHudFrame gevHudFrame--tr"></div>
+    <div class="gevHudFrame gevHudFrame--bl"></div>
+    <div class="gevHudFrame gevHudFrame--br"></div>
+    <div class="gevHudTopLeft">GEV // VISUAL SYSTEM</div>
+    <div class="gevHudTopRight" data-hud-optics>OPTICS // NORMAL</div>
+    <div class="gevHudReticle" aria-hidden="true"><span></span></div>
+    <div class="gevHudReadout gevHudReadout--left">
+      <span>TRACK // VISUAL</span><span>VECTOR // LOCKED</span>
+    </div>
+    <div class="gevHudReadout gevHudReadout--right">
+      <span data-hud-layout-label>HUD // TACTICAL</span><span>LINK // WEB CORE</span>
+    </div>
+    <div class="gevHudBottom">PRESENTATION LAYER // DATA STATE UNCHANGED</div>
+  `;
+  document.getElementById('app')?.appendChild(overlay);
+}
+
 function applyMode(mode, { persist = true, announce = true } = {}) {
   const normalized = MODES.has(mode) ? mode : 'normal';
   const scene = getScene();
@@ -107,6 +133,8 @@ function applyMode(mode, { persist = true, announce = true } = {}) {
   }
 
   document.documentElement.dataset.gevVisualMode = normalized;
+  const opticsLabel = document.querySelector('[data-hud-optics]');
+  if (opticsLabel) opticsLabel.textContent = `OPTICS // ${normalized.toUpperCase()}`;
   document.querySelectorAll('[data-visual-mode]').forEach((button) => {
     const active = button.dataset.visualMode === normalized;
     button.classList.toggle('active', active);
@@ -120,7 +148,10 @@ function applyMode(mode, { persist = true, announce = true } = {}) {
 
 function applyHudLayout(layout, { persist = true, announce = true } = {}) {
   const normalized = HUD_LAYOUTS.has(layout) ? layout : 'tactical';
+  ensureHudOverlay();
   document.documentElement.dataset.gevHud = normalized;
+  const label = document.querySelector('[data-hud-layout-label]');
+  if (label) label.textContent = `HUD // ${normalized.toUpperCase()}`;
   document.querySelectorAll('[data-hud-layout]').forEach((button) => {
     const active = button.dataset.hudLayout === normalized;
     button.classList.toggle('active', active);
@@ -131,6 +162,7 @@ function applyHudLayout(layout, { persist = true, announce = true } = {}) {
 }
 
 function install() {
+  ensureHudOverlay();
   document.querySelectorAll('[data-visual-mode]').forEach((button) => {
     button.addEventListener('click', () => applyMode(button.dataset.visualMode));
   });
