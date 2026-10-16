@@ -12,6 +12,9 @@ function resolvePickedEntity(picked) {
 }
 
 function nativePick(scene, windowPosition) {
+  const screenSatellite = scene.__gevPickNativeSatellite?.(windowPosition);
+  if (screenSatellite?.gevMeta) return { entity: screenSatellite, source: 'NATIVE_SCREEN' };
+
   const picked = scene.pick(windowPosition, DEFAULT_PICK_SIZE, DEFAULT_PICK_SIZE);
   const entity = resolvePickedEntity(picked);
   if (entity) return { entity, source: 'NATIVE' };
@@ -31,10 +34,6 @@ function projectedPick(scene, windowPosition) {
 }
 
 function findGevEntity(scene, primaryPosition, alternatePosition) {
-  // Android/browser input stacks can expose the canvas Y coordinate in
-  // different conventions. Test both native Cesium positions before falling
-  // back to projection. The selected Entity is passed directly to the click
-  // action, so the winning coordinate does not affect target selection.
   const positions = [primaryPosition];
   if (alternatePosition && (alternatePosition.x !== primaryPosition.x || alternatePosition.y !== primaryPosition.y)) {
     positions.push(alternatePosition);
