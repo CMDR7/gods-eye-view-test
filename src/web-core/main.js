@@ -10,6 +10,7 @@ const SATELLITE_REFRESH_MS = 2 * 60 * 60 * 1000;
 const MAX_SATELLITES = 1500;
 const ION_TERRAIN_TIMEOUT_MS = 15_000;
 const DRAWER_TRANSITION_MS = 320;
+const DEFAULT_NAV_ALTITUDE = 15_000;
 
 const state = {
   viewer: null,
@@ -108,25 +109,10 @@ async function loadEarthquakes() {
     const mag = Number(feature.properties?.mag ?? 0);
     const color = mag >= 5 ? Cesium.Color.RED : mag >= 3 ? Cesium.Color.ORANGE : Cesium.Color.YELLOW;
     const place = feature.properties?.place ?? 'UNKNOWN LOCATION';
-    addPoint(
-      layer,
-      lon,
-      lat,
-      0,
-      `M${mag.toFixed(1)} ${place}`.trim(),
-      color,
-      Math.min(14, 4 + mag * 1.4),
-      {
-        type: 'EARTHQUAKE',
-        name: place,
-        id: feature.id || 'USGS EVENT',
-        source: 'USGS',
-        updated,
-        magnitude: mag,
-        depth: Number.isFinite(Number(depth)) ? Number(depth) : 0,
-        altitude: 0,
-      },
-    );
+    addPoint(layer, lon, lat, 0, `M${mag.toFixed(1)} ${place}`.trim(), color, Math.min(14, 4 + mag * 1.4), {
+      type: 'EARTHQUAKE', name: place, id: feature.id || 'USGS EVENT', source: 'USGS', updated,
+      magnitude: mag, depth: Number.isFinite(Number(depth)) ? Number(depth) : 0, altitude: 0,
+    });
   }
   return feed.metadata?.count ?? layer.dataSource.entities.values.length;
 }
@@ -145,28 +131,11 @@ async function loadAircraft() {
     if (!Number.isFinite(aLon) || !Number.isFinite(aLat)) continue;
     const altitude = Number(ac.alt_baro);
     const callsign = ac.flight?.trim() || ac.hex || 'AIR';
-    addPoint(
-      layer,
-      aLon,
-      aLat,
-      Number.isFinite(altitude) ? altitude * 0.3048 : 500,
-      callsign,
-      Cesium.Color.CYAN,
-      6,
-      {
-        type: 'AIRCRAFT',
-        name: callsign,
-        id: ac.hex || callsign,
-        source: 'ADSB.LOL',
-        updated,
-        altitude: Number.isFinite(altitude) ? altitude * 0.3048 : 500,
-        callsign,
-        hex: ac.hex || 'UNKNOWN',
-        squawk: ac.squawk || '—',
-        registration: ac.r || ac.reg || '—',
-        category: ac.category || '—',
-      },
-    );
+    addPoint(layer, aLon, aLat, Number.isFinite(altitude) ? altitude * 0.3048 : 500, callsign, Cesium.Color.CYAN, 6, {
+      type: 'AIRCRAFT', name: callsign, id: ac.hex || callsign, source: 'ADSB.LOL', updated,
+      altitude: Number.isFinite(altitude) ? altitude * 0.3048 : 500, callsign, hex: ac.hex || 'UNKNOWN',
+      squawk: ac.squawk || '—', registration: ac.r || ac.reg || '—', category: ac.category || '—',
+    });
   }
   return data.ac?.length ?? 0;
 }
@@ -190,24 +159,9 @@ async function loadSatellites() {
     const geo = satellite.eciToGeodetic(position.position, gmst);
     const name = lines[i] || 'UNKNOWN SATELLITE';
     const norad = lines[i + 1].slice(2, 7).trim();
-    addPoint(
-      layer,
-      satellite.degreesLong(geo.longitude),
-      satellite.degreesLat(geo.latitude),
-      geo.height * 1000,
-      name,
-      Cesium.Color.LIME,
-      4,
-      {
-        type: 'SATELLITE',
-        name,
-        id: norad || name,
-        source: 'CELESTRAK',
-        updated,
-        altitude: geo.height * 1000,
-        norad,
-      },
-    );
+    addPoint(layer, satellite.degreesLong(geo.longitude), satellite.degreesLat(geo.latitude), geo.height * 1000, name, Cesium.Color.LIME, 4, {
+      type: 'SATELLITE', name, id: norad || name, source: 'CELESTRAK', updated, altitude: geo.height * 1000, norad,
+    });
     count++;
   }
   return count;
@@ -281,7 +235,6 @@ function updateTargetPanel(entity) {
   const lon = cartographic ? Cesium.Math.toDegrees(cartographic.longitude) : Number.NaN;
   const lat = cartographic ? Cesium.Math.toDegrees(cartographic.latitude) : Number.NaN;
   const altitude = Number.isFinite(Number(meta.altitude)) ? Number(meta.altitude) : cartographic?.height;
-
   setTargetField('targetType', meta.type || 'UNKNOWN');
   setTargetField('targetName', meta.name || 'UNKNOWN');
   setTargetField('targetId', meta.id || entity?.id || '—');
@@ -306,7 +259,6 @@ function updateTargetPanel(entity) {
   } else {
     detail.hidden = true;
   }
-
   $('targetPanel').hidden = false;
   $('targetTrack').textContent = state.viewer.trackedEntity === entity ? 'UNTRACK' : 'TRACK';
 }
@@ -348,13 +300,9 @@ function pickEntity(windowPosition) {
 function addTargetInteraction() {
   state.viewer.screenSpaceEventHandler.setInputAction((movement) => {
     const entity = pickEntity(movement.position);
-    if (entity) {
-      selectTarget(entity);
-    } else {
-      clearSelectedTarget();
-    }
+    if (entity) selectTarget(entity);
+    else clearSelectedTarget();
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
-
   state.viewer.screenSpaceEventHandler.setInputAction((movement) => {
     const entity = pickEntity(movement.endPosition);
     state.viewer.canvas.style.cursor = entity ? 'pointer' : '';
@@ -398,6 +346,110 @@ function addTargetControls() {
   $('targetTrack').addEventListener('click', toggleTargetTracking);
 }
 
+function parseCoordinateInput() {
+  const lat = Number.parseFloat($('coordinateLat').value);
+  const lon = Number.parseFloat($('coordinateLon').value);
+  const altRaw = $('coordinateAlt').value.trim();
+  const altitude = altRaw === '' ? DEFAULT_NAV_ALTITUDE : Number.parseFloat(altRaw);
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) return { error: 'LATITUDE MUST BE BETWEEN -90 AND 90' };
+  if (!Number.isFinite(lon) || lon < -180 || lon > 180) return { error: 'LONGITUDE MUST BE BETWEEN -180 AND 180' };
+  if (!Number.isFinite(altitude) || altitude < 0) return { error: 'ALTITUDE MUST BE ZERO OR GREATER' };
+  return { lat, lon, altitude };
+}
+
+function setCoordinateState(message, type = 'info') {
+  const el = $('coordinateState');
+  el.textContent = message;
+  el.dataset.type = type;
+}
+
+function openCoordinatePanel() {
+  closeCommandPanel();
+  const panel = $('coordinatePanel');
+  panel.hidden = false;
+  setCoordinateState('READY // DECIMAL COORDINATES');
+  window.setTimeout(() => $('coordinateLat').focus(), 0);
+}
+
+function closeCoordinatePanel() {
+  $('coordinatePanel').hidden = true;
+}
+
+function flyToCoordinates() {
+  const result = parseCoordinateInput();
+  if (result.error) {
+    setCoordinateState(result.error, 'warn');
+    setStatus(`NAVIGATION INPUT ERROR // ${result.error}`, 'warn');
+    return;
+  }
+  const { lat, lon, altitude } = result;
+  setCoordinateState(`LOCKED // ${lat.toFixed(5)}, ${lon.toFixed(5)}`, 'ok');
+  setStatus('NAVIGATING TO COORDINATES…');
+  state.viewer.trackedEntity = undefined;
+  state.viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(lon, lat, altitude),
+    orientation: { heading: 0, pitch: Cesium.Math.toRadians(-35), roll: 0 },
+    duration: 1.5,
+    complete: () => {
+      setStatus(`COORDINATE LOCKED // ${lat.toFixed(4)}, ${lon.toFixed(4)}`, 'ok');
+      state.viewer.scene.requestRender();
+    },
+    cancel: () => setStatus('COORDINATE FLIGHT CANCELLED', 'warn'),
+  });
+}
+
+function useCurrentLocationForCoordinates() {
+  if (!navigator.geolocation) {
+    setCoordinateState('GEOLOCATION UNAVAILABLE', 'warn');
+    setStatus('Geolocation is not available', 'warn');
+    return;
+  }
+  setCoordinateState('ACQUIRING POSITION…');
+  navigator.geolocation.getCurrentPosition(
+    ({ coords }) => {
+      $('coordinateLat').value = coords.latitude.toFixed(6);
+      $('coordinateLon').value = coords.longitude.toFixed(6);
+      setCoordinateState('CURRENT LOCATION LOADED', 'ok');
+      setStatus('CURRENT LOCATION LOADED INTO NAVIGATION', 'ok');
+    },
+    () => {
+      setCoordinateState('LOCATION PERMISSION DENIED', 'warn');
+      setStatus('Location permission denied or unavailable', 'warn');
+    },
+    { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 },
+  );
+}
+
+async function copyCoordinateInput() {
+  const result = parseCoordinateInput();
+  if (result.error) {
+    setCoordinateState(result.error, 'warn');
+    return;
+  }
+  const text = `${result.lat.toFixed(6)}, ${result.lon.toFixed(6)}${$('coordinateAlt').value.trim() ? `, ${result.altitude.toFixed(0)} m` : ''}`;
+  try {
+    await navigator.clipboard.writeText(text);
+    setCoordinateState('COPIED // ' + text, 'ok');
+    setStatus('COORDINATES COPIED TO CLIPBOARD', 'ok');
+  } catch {
+    setCoordinateState('CLIPBOARD UNAVAILABLE', 'warn');
+    setStatus('Clipboard access unavailable in this browser', 'warn');
+  }
+}
+
+function addCoordinateControls() {
+  $('coordinateNav').addEventListener('click', openCoordinatePanel);
+  $('coordinateClose').addEventListener('click', closeCoordinatePanel);
+  $('coordinateFly').addEventListener('click', flyToCoordinates);
+  $('coordinateLocation').addEventListener('click', useCurrentLocationForCoordinates);
+  $('coordinateCopy').addEventListener('click', copyCoordinateInput);
+  ['coordinateLat', 'coordinateLon', 'coordinateAlt'].forEach((id) => {
+    $(id).addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') flyToCoordinates();
+    });
+  });
+}
+
 function updateIonPanelState() {
   const status = getIonTokenStatus();
   const stateEl = $('ionState');
@@ -405,15 +457,11 @@ function updateIonPanelState() {
   const connect = $('ionConnect');
   const remember = $('ionRemember');
   const description = $('ionDescription');
-
   stateEl.textContent = status.configured
     ? status.persisted ? 'USER TOKEN CONFIGURED // DEVICE STORAGE' : 'USER TOKEN CONFIGURED // SESSION ONLY'
     : 'NO USER TOKEN CONFIGURED';
   stateEl.dataset.type = status.configured ? 'ok' : 'warn';
-
-  input.placeholder = status.configured
-    ? 'TOKEN STORED — ENTER NEW TOKEN TO REPLACE'
-    : 'Paste Cesium Ion token';
+  input.placeholder = status.configured ? 'TOKEN STORED — ENTER NEW TOKEN TO REPLACE' : 'Paste Cesium Ion token';
   connect.textContent = status.configured ? 'REPLACE TOKEN' : 'CONNECT';
   connect.disabled = status.configured && !input.value.trim();
   remember.checked = status.persisted || !status.configured;
@@ -432,18 +480,10 @@ function updateIonTerrainControl() {
 
 function classifyIonTerrainError(error) {
   const message = String(error?.message ?? error ?? '').toLowerCase();
-  if (message.includes('401') || message.includes('unauthorized') || message.includes('invalid_token')) {
-    return 'ION TERRAIN ERROR // 401 AUTHORIZATION';
-  }
-  if (message.includes('403') || message.includes('forbidden')) {
-    return 'ION TERRAIN ERROR // 403 ACCESS DENIED';
-  }
-  if (message.includes('404') || message.includes('not found')) {
-    return 'ION TERRAIN ERROR // 404 ASSET NOT FOUND';
-  }
-  if (message.includes('timeout')) {
-    return 'ION TERRAIN ERROR // REQUEST TIMEOUT';
-  }
+  if (message.includes('401') || message.includes('unauthorized') || message.includes('invalid_token')) return 'ION TERRAIN ERROR // 401 AUTHORIZATION';
+  if (message.includes('403') || message.includes('forbidden')) return 'ION TERRAIN ERROR // 403 ACCESS DENIED';
+  if (message.includes('404') || message.includes('not found')) return 'ION TERRAIN ERROR // 404 ASSET NOT FOUND';
+  if (message.includes('timeout')) return 'ION TERRAIN ERROR // REQUEST TIMEOUT';
   return 'ION TERRAIN ERROR // REQUEST FAILED';
 }
 
@@ -453,11 +493,9 @@ async function setIonTerrain(enabled) {
     setStatus('CESIUM ION TOKEN REQUIRED FOR WORLD TERRAIN', 'warn');
     return;
   }
-
   const button = $('ionTerrain');
   button.disabled = true;
   setStatus(enabled ? 'LOADING CESIUM WORLD TERRAIN…' : 'RESTORING ELLIPSOID TERRAIN…');
-
   try {
     if (enabled) {
       const terrainProvider = await Promise.race([
@@ -529,7 +567,6 @@ function addIonControls() {
   const panel = $('ionPanel');
   const input = $('ionToken');
   const remember = $('ionRemember');
-
   $('ionSettings').addEventListener('click', () => {
     closeCommandPanel();
     panel.hidden = false;
@@ -537,15 +574,8 @@ function addIonControls() {
     updateIonTerrainControl();
     if (!getIonTokenStatus().configured) input.focus();
   });
-
-  $('ionClose').addEventListener('click', () => {
-    panel.hidden = true;
-  });
-
-  input.addEventListener('input', () => {
-    updateIonPanelState();
-  });
-
+  $('ionClose').addEventListener('click', () => { panel.hidden = true; });
+  input.addEventListener('input', updateIonPanelState);
   $('ionConnect').addEventListener('click', () => {
     try {
       saveIonToken(input.value, remember.checked);
@@ -559,7 +589,6 @@ function addIonControls() {
       setStatus(error.message, 'warn');
     }
   });
-
   $('ionClear').addEventListener('click', () => {
     clearIonToken();
     input.value = '';
@@ -569,11 +598,7 @@ function addIonControls() {
     setStatus('CESIUM ION TOKEN CLEARED — RELOADING…', 'ok');
     window.setTimeout(() => window.location.reload(), 250);
   });
-
-  $('ionTerrain').addEventListener('click', () => {
-    setIonTerrain(!state.ionTerrainEnabled);
-  });
-
+  $('ionTerrain').addEventListener('click', () => setIonTerrain(!state.ionTerrainEnabled));
   updateIonPanelState();
   updateIonTerrainControl();
 }
@@ -606,19 +631,14 @@ function addControls() {
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 },
     );
   });
+  addCoordinateControls();
   addIonControls();
   addTargetControls();
-
   window.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
-    if (state.commandPanelOpen) {
-      closeCommandPanel();
-      return;
-    }
-    if (!$('ionPanel').hidden) {
-      $('ionPanel').hidden = true;
-      return;
-    }
+    if (state.commandPanelOpen) { closeCommandPanel(); return; }
+    if (!$('coordinatePanel').hidden) { closeCoordinatePanel(); return; }
+    if (!$('ionPanel').hidden) { $('ionPanel').hidden = true; return; }
     clearSelectedTarget();
   });
 }
@@ -627,7 +647,6 @@ function addTelemetryHud() {
   const hud = document.createElement('section');
   hud.className = 'telemetryHud';
   hud.setAttribute('aria-label', 'Camera telemetry');
-
   const labels = ['LAT', 'LON', 'ALT', 'HDG', 'RNG'];
   labels.forEach((label) => {
     const item = document.createElement('div');
@@ -664,87 +683,43 @@ function addTelemetryHud() {
     '  pointer-events: none;',
     '  user-select: none;',
     '}',
-    '.telemetryReadout {',
-    '  min-width: 0;',
-    '  padding: 5px 6px 4px;',
-    '  border: 1px solid rgba(100, 220, 255, .09);',
-    '  border-radius: 5px;',
-    '  background: rgba(0, 0, 0, .22);',
-    '  box-shadow: inset 0 1px 0 rgba(120, 230, 255, .07);',
-    '}',
-    '.telemetryReadout span {',
-    '  display: block;',
-    '  margin-bottom: 3px;',
-    '  font: 600 7px/1 Orbitron, sans-serif;',
-    '  letter-spacing: .12em;',
-    '  color: #647b86;',
-    '}',
-    '.telemetryReadout strong {',
-    '  display: block;',
-    '  overflow: hidden;',
-    '  text-overflow: ellipsis;',
-    '  white-space: nowrap;',
-    '  font: 600 9px/1.1 Orbitron, sans-serif;',
-    '  letter-spacing: .02em;',
-    '  color: #dffaff;',
-    '  text-shadow: 0 0 8px rgba(90, 220, 255, .18);',
-    '}',
-    '@media (max-width: 520px) {',
-    '  .telemetryHud { bottom: calc(8px + env(safe-area-inset-bottom)); width: calc(100vw - 16px); gap: 3px; padding: 4px; }',
-    '  .telemetryReadout { padding: 4px 4px 3px; }',
-    '  .telemetryReadout span { font-size: 6px; }',
-    '  .telemetryReadout strong { font-size: 7px; }',
-    '}',
+    '.telemetryReadout { min-width: 0; padding: 5px 6px 4px; border: 1px solid rgba(100, 220, 255, .09); border-radius: 5px; background: rgba(0, 0, 0, .22); box-shadow: inset 0 1px 0 rgba(120, 230, 255, .07); }',
+    '.telemetryReadout span { display: block; margin-bottom: 3px; font: 600 7px/1 Orbitron, sans-serif; letter-spacing: .12em; color: #647b86; }',
+    '.telemetryReadout strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 9px/1.1 Orbitron, sans-serif; letter-spacing: .02em; color: #dffaff; text-shadow: 0 0 8px rgba(90, 220, 255, .18); }',
+    '@media (max-width: 520px) { .telemetryHud { bottom: calc(8px + env(safe-area-inset-bottom)); width: calc(100vw - 16px); gap: 3px; padding: 4px; } .telemetryReadout { padding: 4px 4px 3px; } .telemetryReadout span { font-size: 6px; } .telemetryReadout strong { font-size: 7px; } }',
   ].join('\n');
   document.head.appendChild(style);
 
-  const fields = Object.fromEntries(
-    labels.map((key) => [key, hud.querySelector('[data-telemetry="' + key + '"]')]),
-  );
-  const formatTelemetry = (value, digits = 1) => Number.isFinite(value)
-    ? value.toLocaleString(undefined, { maximumFractionDigits: digits })
-    : '—';
-
+  const fields = Object.fromEntries(labels.map((key) => [key, hud.querySelector(`[data-telemetry="${key}"]`)]));
+  const formatTelemetry = (value, digits = 1) => Number.isFinite(value) ? value.toLocaleString(undefined, { maximumFractionDigits: digits }) : '—';
   const update = () => {
     const camera = state.viewer?.camera;
     const scene = state.viewer?.scene;
     if (!camera || !scene) return;
-
     const cartographic = camera.positionCartographic;
     const lat = Cesium.Math.toDegrees(cartographic.latitude);
     const lon = Cesium.Math.toDegrees(cartographic.longitude);
     const heading = Cesium.Math.toDegrees(Cesium.Math.zeroToTwoPi(camera.heading));
     const altitude = cartographic.height;
-
     fields.LAT.textContent = Math.abs(lat).toFixed(4) + '° ' + (lat >= 0 ? 'N' : 'S');
     fields.LON.textContent = Math.abs(lon).toFixed(4) + '° ' + (lon >= 0 ? 'E' : 'W');
     fields.ALT.textContent = formatTelemetry(altitude, 0) + ' M';
     fields.HDG.textContent = formatTelemetry(heading, 0) + '°';
-
     let range = Number.NaN;
     try {
       const center = new Cesium.Cartesian2(scene.canvas.clientWidth / 2, scene.canvas.clientHeight / 2);
       const ray = camera.getPickRay(center);
       const surface = ray ? scene.globe.pick(ray, scene) : undefined;
       if (surface) range = Cesium.Cartesian3.distance(camera.position, surface);
-    } catch {
-      range = Number.NaN;
-    }
-    fields.RNG.textContent = Number.isFinite(range)
-      ? formatTelemetry(range / 1000, range >= 100000 ? 0 : 1) + ' KM'
-      : '—';
+    } catch { range = Number.NaN; }
+    fields.RNG.textContent = Number.isFinite(range) ? formatTelemetry(range / 1000, range >= 100000 ? 0 : 1) + ' KM' : '—';
   };
-
   let queued = false;
   const queueUpdate = () => {
     if (queued) return;
     queued = true;
-    window.requestAnimationFrame(() => {
-      queued = false;
-      update();
-    });
+    window.requestAnimationFrame(() => { queued = false; update(); });
   };
-
   state.viewer.camera.changed.addEventListener(queueUpdate);
   state.viewer.camera.moveEnd.addEventListener(queueUpdate);
   state.viewer.scene.postRender.addEventListener(update);
@@ -776,7 +751,6 @@ async function boot() {
   state.viewer.scene.skyAtmosphere.show = true;
   state.viewer.scene.requestRender();
   addTelemetryHud();
-
   addLayer('aircraft', 'AIRCRAFT', Cesium.Color.CYAN);
   addLayer('satellites', 'SATELLITES', Cesium.Color.LIME);
   addLayer('earthquakes', 'EARTHQUAKES', Cesium.Color.ORANGE);
