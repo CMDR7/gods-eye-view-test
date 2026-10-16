@@ -1,3 +1,4 @@
+<img width="1200" height="630" alt="1000102363" src="https://github.com/user-attachments/assets/21665e58-1e5c-4978-bd47-a485f8a90a91" />
 # GOD'S EYE VIEW // WEB CORE
 
 > A browser-first, progressively built Web Core for **God's Eye View**.
