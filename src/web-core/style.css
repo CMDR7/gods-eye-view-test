@@ -4,7 +4,7 @@ body { background: #05070a; }
 #cesiumContainer { position: fixed; inset: 0; }
 #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
 #brand { position: absolute; top: 14px; left: 14px; padding: 10px 13px; border: 1px solid rgba(0,220,255,.38); border-radius: 5px; background: rgba(3,8,12,.78); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); font: 500 13px/1 'Orbitron', sans-serif; letter-spacing: .16em; color: var(--gev-text); box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 0 16px rgba(0,220,255,.08); }
-#status { position: absolute; left: 14px; bottom: 14px; max-width: calc(100vw - 28px); padding: 8px 11px; border: 1px solid rgba(255,255,255,.16); border-radius: 5px; background: rgba(3,8,12,.82); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); font: 500 10px/1.2 'Orbitron', sans-serif; letter-spacing: .055em; color: #b9c5cc; }
+#status { position: absolute; left: 14px; bottom: 58px; max-width: calc(100vw - 28px); padding: 8px 11px; border: 1px solid rgba(255,255,255,.16); border-radius: 5px; background: rgba(3,8,12,.82); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); font: 500 10px/1.2 'Orbitron', sans-serif; letter-spacing: .055em; color: #b9c5cc; }
 #status[data-type="ok"] { color: #8cffb5; }
 #status[data-type="warn"] { color: #ffd36b; }
 #status[data-type="error"] { color: #ff7070; }
@@ -67,7 +67,7 @@ button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
 @media (max-width: 640px) {
   #brand { top: 10px; left: 10px; padding: 9px 10px; font-size: 10px; }
   .menuToggle { top: 10px; right: 10px; }
-  #status { left: 10px; bottom: 10px; }
+  #status { left: 10px; bottom: 52px; }
   .commandPanel { width: min(340px, calc(100vw - 10px)); padding: 15px; }
   .panel { top: 10px; left: 10px; right: 10px; width: auto; }
   .telemetryHud { top: 60px !important; bottom: auto !important; width: calc(100vw - 16px); }
