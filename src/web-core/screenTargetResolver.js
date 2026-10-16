@@ -37,49 +37,66 @@ function getGevEntities(scene) {
   return entities;
 }
 
-// PointerEvent coordinates are measured from the top-left of the canvas in
-// CSS pixels. Cesium exposes cartesianToCanvasCoordinates() specifically for
-// mapping world positions into the same canvas screen space. Comparing those
-// two spaces directly avoids the mobile/high-DPI window-coordinate ambiguity.
-function resolveProjectedTarget(scene, canvasX, canvasY) {
-  if (!scene || !Number.isFinite(canvasX) || !Number.isFinite(canvasY)) return undefined;
+function angularToleranceRadians(scene, radiusPx) {
+  const canvasHeight = scene.canvas?.clientHeight || 0;
+  const fovy = scene.camera.frustum?.fovy;
+  if (!canvasHeight || !Number.isFinite(fovy) || fovy <= 0) return Cesium.Math.toRadians(1.0);
+  const focalPixels = (canvasHeight * 0.5) / Math.tan(fovy * 0.5);
+  return Math.atan(radiusPx / Math.max(focalPixels, 1));
+}
+
+// Resolve the tap against the actual camera ray instead of converting between
+// CSS pixels, drawing-buffer pixels, and Cesium window coordinates. The same
+// windowPosition already used by globe.pick() is used to construct the ray,
+// then every GEV entity is tested by angular separation from that ray. This is
+// particularly reliable for satellites because their world positions are
+// thousands of kilometres above the ellipsoid and are not surface points.
+function resolveProjectedTarget(scene, windowPosition) {
+  if (!scene || !Cesium.defined(windowPosition)) return undefined;
+
+  const ray = scene.camera.getPickRay(windowPosition);
+  if (!ray) return undefined;
 
   let best;
-  let bestDistance = Number.POSITIVE_INFINITY;
-  const now = Cesium.JulianDate.now();
-  const projected = new Cesium.Cartesian2();
+  let bestAngle = Number.POSITIVE_INFINITY;
+  const toTarget = new Cesium.Cartesian3();
+  const direction = new Cesium.Cartesian3();
 
   for (const entity of getGevEntities(scene)) {
     let worldPosition;
     try {
-      worldPosition = entity.position.getValue(now);
+      worldPosition = entity.position.getValue(Cesium.JulianDate.now());
     } catch {
       continue;
     }
     if (!Cesium.defined(worldPosition)) continue;
 
-    const screenPosition = scene.cartesianToCanvasCoordinates(worldPosition, projected);
-    if (!Cesium.defined(screenPosition)) continue;
+    Cesium.Cartesian3.subtract(worldPosition, ray.origin, toTarget);
+    const distance = Cesium.Cartesian3.magnitude(toTarget);
+    if (!Number.isFinite(distance) || distance <= 0) continue;
 
-    const distance = Math.hypot(screenPosition.x - canvasX, screenPosition.y - canvasY);
-    const radius = targetRadius(entity);
-    if (distance > radius || distance >= bestDistance) continue;
+    Cesium.Cartesian3.normalize(toTarget, direction);
+    const cosine = Cesium.Math.clamp(Cesium.Cartesian3.dot(direction, ray.direction), -1, 1);
+    const angle = Math.acos(cosine);
+    if (!Number.isFinite(angle)) continue;
+
+    const tolerance = angularToleranceRadians(scene, targetRadius(entity));
+    if (angle > tolerance || angle >= bestAngle) continue;
 
     best = entity;
-    bestDistance = distance;
+    bestAngle = angle;
   }
 
   return best;
 }
 
-// Install on the prototype before the Viewer/Scene is constructed. The touch
-// bridge can therefore resolve a target on the very first tap; it no longer
-// depends on a previous render() call to initialize per-scene state.
+// Install before the Viewer/Scene is constructed so the touch bridge can use
+// the resolver on the first possible tap.
 if (!Cesium.Scene.prototype[RESOLVER_FLAG]) {
-  Cesium.Scene.prototype.__gevResolveProjectedTarget = function resolveGevProjectedTarget(canvasX, canvasY) {
-    return resolveProjectedTarget(this, canvasX, canvasY);
+  Cesium.Scene.prototype.__gevResolveProjectedTarget = function resolveGevProjectedTarget(windowPosition) {
+    return resolveProjectedTarget(this, windowPosition);
   };
   Cesium.Scene.prototype[RESOLVER_FLAG] = true;
 }
 
-console.info('[GEV] Screen-space target resolver ready');
+console.info('[GEV] Ray-space target resolver ready');
