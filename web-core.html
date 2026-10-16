@@ -18,9 +18,29 @@
         <button data-layer="aircraft" type="button">AIRCRAFT</button>
         <button data-layer="satellites" type="button">SATELLITES</button>
         <button data-layer="earthquakes" type="button">EARTHQUAKES</button>
+        <button id="ionSettings" type="button">CESIUM ION</button>
       </div>
       <div id="status" role="status">BOOTING…</div>
     </div>
+
+    <section id="ionPanel" class="panel" hidden aria-labelledby="ionTitle">
+      <div class="panelHeader">
+        <div id="ionTitle">CESIUM ION // USER TOKEN</div>
+        <button id="ionClose" class="panelClose" type="button" aria-label="Close">×</button>
+      </div>
+      <p class="panelText">Enter your own Cesium Ion access token. The token is used directly by this browser and is never sent to a GEV server.</p>
+      <label class="fieldLabel" for="ionToken">ACCESS TOKEN</label>
+      <input id="ionToken" class="tokenInput" type="password" inputmode="text" autocomplete="off" spellcheck="false" placeholder="Paste Cesium Ion token" />
+      <label class="rememberRow">
+        <input id="ionRemember" type="checkbox" checked />
+        <span>Remember on this device</span>
+      </label>
+      <div class="panelActions">
+        <button id="ionConnect" type="button">CONNECT</button>
+        <button id="ionClear" type="button">CLEAR</button>
+      </div>
+      <div id="ionState" class="panelState" role="status">NO USER TOKEN CONFIGURED</div>
+    </section>
   </div>
   <script type="module" src="/src/web-core/main.js"></script>
 </body>
