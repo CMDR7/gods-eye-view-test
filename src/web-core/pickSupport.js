@@ -2,22 +2,20 @@ import * as Cesium from 'cesium';
 
 const DEFAULT_PICK_SIZE = 25;
 const TOUCH_TAP_TOLERANCE = 14;
-const PATCH_FLAG = '__gevMobilePickPatched';
 const TOUCH_BRIDGE_FLAG = '__gevTouchBridgeInstalled';
 const RENDER_PATCH_FLAG = '__gevSceneCapturePatched';
 
-const originalPick = Cesium.Scene.prototype.pick;
-const originalDrillPick = Cesium.Scene.prototype.drillPick;
-
-function findGevEntity(scene, windowPosition) {
-  const projected = scene.__gevResolveProjectedTarget?.(windowPosition);
+function findGevEntity(scene, canvasX, canvasY, windowPosition) {
+  const projected = scene.__gevResolveProjectedTarget?.(canvasX, canvasY);
   if (projected) return projected;
+
   const picked = scene.pick(windowPosition, DEFAULT_PICK_SIZE, DEFAULT_PICK_SIZE);
   if (Cesium.defined(picked)) {
     const pickedId = Cesium.defaultValue(picked.id, picked.primitive?.id);
     if (pickedId instanceof Cesium.Entity && pickedId.gevMeta) return pickedId;
   }
-  const candidates = originalDrillPick.call(scene, windowPosition, 20, DEFAULT_PICK_SIZE, DEFAULT_PICK_SIZE);
+
+  const candidates = scene.drillPick(windowPosition, DEFAULT_PICK_SIZE, DEFAULT_PICK_SIZE);
   for (const candidate of candidates) {
     const id = Cesium.defaultValue(candidate?.id, candidate?.primitive?.id);
     if (id instanceof Cesium.Entity && id.gevMeta) return id;
@@ -50,7 +48,10 @@ function showTouchFocus(clientX, clientY, message) {
   }, 850);
   if (message) {
     const status = document.getElementById('status');
-    if (status) { status.textContent = message; status.dataset.type = 'ok'; }
+    if (status) {
+      status.textContent = message;
+      status.dataset.type = 'ok';
+    }
   }
 }
 
@@ -81,7 +82,10 @@ function installTouchBridge(handler) {
   element.addEventListener('pointerdown', (event) => {
     if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
     if (event.isPrimary === false) return;
-    startX = event.clientX; startY = event.clientY; pointerId = event.pointerId; moved = false;
+    startX = event.clientX;
+    startY = event.clientY;
+    pointerId = event.pointerId;
+    moved = false;
   }, { passive: true });
 
   element.addEventListener('pointermove', (event) => {
@@ -96,54 +100,33 @@ function installTouchBridge(handler) {
     if (!wasTap) return;
 
     const rect = element.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-    const windowPosition = new Cesium.Cartesian2(x, element.clientHeight - y);
+    const canvasX = event.clientX - rect.left;
+    const canvasY = event.clientY - rect.top;
+    const windowPosition = new Cesium.Cartesian2(canvasX, rect.height - canvasY);
     const scene = element.__gevScene;
     if (!scene) return;
 
-    const entity = findGevEntity(scene, windowPosition);
-    showTouchFocus(event.clientX, event.clientY);
-
-    // Hand the projected entity to the existing Cesium LEFT_CLICK selection
-    // path through Scene.pick(). This keeps main.js unchanged while avoiding
-    // another coordinate conversion or WebGL point-picking dependency.
-    scene.__gevTouchTarget = entity || null;
-    try {
-      const action = handler.getInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK);
-      if (typeof action === 'function') action({ position: windowPosition, __gevTarget: entity });
-    } finally {
-      scene.__gevTouchTarget = null;
+    const entity = findGevEntity(scene, canvasX, canvasY, windowPosition);
+    if (entity) {
+      showTouchFocus(event.clientX, event.clientY, `TARGET FOCUS // ${entity.gevMeta?.type || 'GEV'}`);
+    } else {
+      showTouchFocus(event.clientX, event.clientY);
     }
 
+    // Pass the resolved entity explicitly to the existing LEFT_CLICK action.
+    // main.js consumes __gevTarget before asking Cesium to perform a native pick.
+    const action = handler.getInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK);
+    if (typeof action === 'function') {
+      action({ position: windowPosition, __gevTarget: entity });
+    }
+
+    // Ground coordinates are a fallback only. A satellite/aircraft target
+    // never produces a GROUND FOCUS message once the projected resolver hits.
     if (!entity) {
       const groundMessage = formatGroundPosition(scene, windowPosition);
       if (groundMessage) showTouchFocus(event.clientX, event.clientY, groundMessage);
-    } else {
-      showTouchFocus(event.clientX, event.clientY, `TARGET FOCUS // ${entity.gevMeta?.type || 'GEV'}`);
     }
   }, { passive: true });
-}
-
-if (!originalPick[PATCH_FLAG]) {
-  const expandedPick = function pickWithTouchTarget(windowPosition, width, height) {
-    const pickWidth = width === undefined ? DEFAULT_PICK_SIZE : width;
-    const pickHeight = height === undefined ? DEFAULT_PICK_SIZE : height;
-    const picked = originalPick.call(this, windowPosition, pickWidth, pickHeight);
-    if (Cesium.defined(picked)) {
-      const pickedId = Cesium.defaultValue(picked.id, picked.primitive?.id);
-      if (pickedId instanceof Cesium.Entity && pickedId.gevMeta) return picked;
-    }
-    const candidates = originalDrillPick.call(this, windowPosition, 20, pickWidth, pickHeight);
-    for (const candidate of candidates) {
-      const id = Cesium.defaultValue(candidate?.id, candidate?.primitive?.id);
-      if (id instanceof Cesium.Entity && id.gevMeta) return candidate;
-    }
-    return picked;
-  };
-  expandedPick[PATCH_FLAG] = true;
-  expandedPick.__gevOriginalPick = originalPick;
-  Cesium.Scene.prototype.pick = expandedPick;
 }
 
 const originalRender = Cesium.Scene.prototype.render;
