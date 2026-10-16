@@ -109,7 +109,7 @@ if (originalPick && !originalPick[PATCH_FLAG]) {
       if (pickedId instanceof Cesium.Entity && pickedId.gevMeta) return picked;
     }
 
-    if (this.__gevResolveProjectedPick && this.__gevProjectedPickPosition === windowPosition) {
+    if (this.__gevResolveProjectedPick) {
       const entity = resolveProjectedTarget(this, windowPosition);
       if (entity) return { id: entity, primitive: entity };
     }
@@ -129,22 +129,22 @@ if (originalSetInputAction && !originalSetInputAction[SET_ACTION_FLAG]) {
       return originalSetInputAction.call(this, action, type, modifier);
     }
 
+    const handler = this;
+    const element = handler._element;
     const wrappedAction = function projectedTargetAction(movement) {
-      const scene = this._element?.__gevScene;
-      if (!scene || !movement?.position) return action.call(this, movement);
+      const scene = element?.__gevScene;
+      if (!scene || !movement?.position) return action(movement);
 
       scene.__gevResolveProjectedPick = true;
-      scene.__gevProjectedPickPosition = movement.position;
       try {
-        return action.call(this, movement);
+        return action(movement);
       } finally {
-        scene.__gevProjectedPickPosition = undefined;
         scene.__gevResolveProjectedPick = false;
       }
     };
 
     wrappedAction.__gevOriginalAction = action;
-    return originalSetInputAction.call(this, wrappedAction, type, modifier);
+    return originalSetInputAction.call(handler, wrappedAction, type, modifier);
   };
 
   wrappedSetInputAction[SET_ACTION_FLAG] = true;
