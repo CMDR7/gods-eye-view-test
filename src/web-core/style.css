@@ -52,7 +52,7 @@ button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
 .panelState { margin-top: 10px; padding: 7px 8px; border: 1px solid rgba(255,255,255,.1); border-radius: 6px; font: 500 9px/1.3 'Orbitron', sans-serif; letter-spacing: .06em; color: #8cffb5; }
 .panelState[data-type="warn"] { color: #ffd36b; border-color: rgba(255,211,107,.22); }
 
-.targetPanel { left: 14px; right: auto; }
+.targetPanel { left: 14px; right: auto; width: min(430px, calc(100vw - 28px)); }
 .targetIdentity { padding: 11px 2px 9px; border-bottom: 1px solid rgba(120,220,255,.12); }
 .targetType { font: 600 8px/1 'Orbitron', sans-serif; letter-spacing: .15em; color: #72dfff; }
 .targetName { margin-top: 5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 14px/1.2 'Rajdhani', sans-serif; letter-spacing: .08em; color: #effcff; }
@@ -60,9 +60,11 @@ button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
 .telemetryItem { min-width: 0; padding: 7px 8px; border: 1px solid rgba(120,220,255,.11); border-radius: 6px; background: rgba(0,0,0,.22); }
 .telemetryItem span, .targetDetail span { display: block; margin-bottom: 4px; font: 600 7px/1 'Orbitron', sans-serif; letter-spacing: .1em; color: #718691; }
 .telemetryItem strong, .targetDetail strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 8px/1.2 'Orbitron', sans-serif; color: #dffaff; }
-.targetDetail { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 7px; padding: 7px 8px; border: 1px solid rgba(0,220,255,.18); border-radius: 6px; background: rgba(0,80,105,.12); }
-.targetDetail span { margin: 0; align-self: center; }
-.targetDetail strong { text-align: right; }
+.targetDetail { margin-top: 7px; padding: 7px; border: 1px solid rgba(0,220,255,.18); border-radius: 6px; background: rgba(0,80,105,.12); }
+.targetDetailGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.targetDetailItem { min-width: 0; padding: 7px 8px; border: 1px solid rgba(120,220,255,.1); border-radius: 5px; background: rgba(0,0,0,.18); }
+.targetDetailItem span { margin-bottom: 4px; }
+.targetDetailItem strong { text-align: left; }
 .targetActions { margin-top: 9px; }
 .targetActions button { min-height: 34px; padding: 7px 8px; font-size: 8px; }
 
@@ -77,6 +79,8 @@ button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
   .panel { top: 10px; left: 10px; right: 10px; width: auto; }
   .coordinatePanel { top: 108px; }
   .coordinateGrid { gap: 6px; }
+  .targetDetailGrid { gap: 5px; }
+  .targetDetailItem { padding: 6px; }
   .telemetryHud { top: 60px !important; bottom: auto !important; width: calc(100vw - 16px); }
 }
 
