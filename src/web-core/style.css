@@ -1,0 +1,19 @@
+html, body, #app, #cesiumContainer { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+:root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background: #05070a; }
+body { background: #05070a; }
+#cesiumContainer { position: fixed; inset: 0; }
+#hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+#brand { position: absolute; top: 14px; left: 14px; padding: 8px 11px; border: 1px solid rgba(0,220,255,.35); background: rgba(3,8,12,.78); backdrop-filter: blur(8px); font: 700 12px/1 monospace; letter-spacing: .18em; color: #dffaff; }
+#status { position: absolute; left: 14px; bottom: 14px; max-width: calc(100vw - 28px); padding: 7px 10px; border: 1px solid rgba(255,255,255,.16); background: rgba(3,8,12,.82); font: 11px/1.2 monospace; letter-spacing: .06em; color: #b9c5cc; }
+#status[data-type="ok"] { color: #8cffb5; }
+#status[data-type="warn"] { color: #ffd36b; }
+#status[data-type="error"] { color: #ff7070; }
+#controls { position: absolute; top: 14px; right: 14px; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; pointer-events: auto; max-width: min(520px, calc(100vw - 28px)); }
+button { border: 1px solid rgba(120,220,255,.24); background: rgba(4,10,15,.84); color: #d9edf2; padding: 8px 10px; font: 600 10px monospace; letter-spacing: .08em; cursor: pointer; backdrop-filter: blur(8px); }
+button:hover, button.active { border-color: rgba(0,220,255,.72); background: rgba(0,100,130,.28); }
+@media (max-width: 640px) {
+  #brand { top: 10px; left: 10px; }
+  #controls { top: 52px; left: 10px; right: 10px; justify-content: flex-start; }
+  button { min-height: 38px; }
+  #status { left: 10px; bottom: 10px; }
+}
