@@ -6,24 +6,11 @@ on:
   pull_request:
     branches: [web-core]
 
-permissions:
-  contents: write
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Apply one-shot Stage 2B patch
-        if: hashFiles('scripts/apply-stage2b.mjs') != ''
-        run: |
-          node scripts/apply-stage2b.mjs
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/web-core/main.js
-          git rm scripts/apply-stage2b.mjs
-          git commit -m "Add Stage 2B tactical telemetry HUD"
-          git push
       - uses: actions/setup-node@v4
         with:
           node-version: 24
