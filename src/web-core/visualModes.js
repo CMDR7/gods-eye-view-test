@@ -48,25 +48,40 @@ void main() {
   vec3 rgb = source.rgb;
   float lum = dot(rgb, vec3(0.299, 0.587, 0.114));
 
+  // NVG: preserve scene detail while applying a restrained phosphor-green lift.
   if (mode > 0.5 && mode < 1.5) {
-    float enhanced = smoothstep(0.05, 0.9, lum) * 1.12;
-    rgb = vec3(enhanced * 0.12, enhanced * 0.82, enhanced * 0.30);
-    rgb += vec3(0.0, 0.035, 0.012) * sin(uv.y * 900.0 + time * 0.35);
+    float lifted = smoothstep(0.025, 0.82, lum);
+    vec3 phosphor = vec3(lifted * 0.08, lifted * 0.52, lifted * 0.17);
+    float detail = smoothstep(0.035, 0.88, lum);
+    rgb = mix(vec3(lum * 0.22), phosphor, 0.76);
+    rgb += vec3(0.0, 0.018, 0.006) * detail;
+    rgb *= 0.90 + 0.10 * sin(uv.y * 900.0 + time * 0.35);
   }
 
+  // FLIR: restrained thermal ramp with dark detail retained at the low end.
   if (mode > 1.5 && mode < 2.5) {
-    float t = smoothstep(0.04, 0.92, lum);
-    vec3 cold = vec3(0.015, 0.10, 0.16);
-    vec3 mid = vec3(0.05, 0.65, 0.78);
-    vec3 hot = vec3(1.0, 0.55, 0.08);
-    rgb = t < 0.55 ? mix(cold, mid, t / 0.55) : mix(mid, hot, (t - 0.55) / 0.45);
+    float t = smoothstep(0.035, 0.96, lum);
+    vec3 cold = vec3(0.006, 0.018, 0.030);
+    vec3 low = vec3(0.025, 0.16, 0.25);
+    vec3 mid = vec3(0.22, 0.52, 0.42);
+    vec3 warm = vec3(0.88, 0.62, 0.18);
+    vec3 hot = vec3(1.0, 0.88, 0.62);
+    vec3 thermal = t < 0.22
+      ? mix(cold, low, t / 0.22)
+      : t < 0.58
+        ? mix(low, mid, (t - 0.22) / 0.36)
+        : t < 0.84
+          ? mix(mid, warm, (t - 0.58) / 0.26)
+          : mix(warm, hot, (t - 0.84) / 0.16);
+    rgb = mix(vec3(lum * 0.18), thermal, 0.86);
   }
 
+  // CRT: subtle scanlines and vignette; the underlying globe remains dominant.
   if (mode > 2.5) {
-    float scan = 0.94 + 0.06 * sin(uv.y * 1100.0 + time * 1.8);
-    float vignette = 1.0 - 0.10 * smoothstep(0.45, 0.82, distance(uv, vec2(0.5)));
+    float scan = 0.978 + 0.022 * sin(uv.y * 1100.0 + time * 1.8);
+    float vignette = 1.0 - 0.065 * smoothstep(0.45, 0.82, distance(uv, vec2(0.5)));
     rgb *= scan * vignette;
-    rgb += vec3(0.0, 0.008, 0.012);
+    rgb = mix(rgb, rgb * vec3(0.96, 1.0, 1.015), 0.42);
   }
 
   out_FragColor = vec4(clamp(rgb, 0.0, 1.0), source.a);
