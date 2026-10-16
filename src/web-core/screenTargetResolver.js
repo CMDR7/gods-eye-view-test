@@ -25,10 +25,8 @@ function unregisterEntity(entity) {
 
 function cleanupRegistry() {
   for (const entity of ENTITY_REGISTRY) {
-    if (!entity?.entityCollection || !isGevEntity(entity)) {
-      if (!entity?.entityCollection || entity?.entityCollection?.contains?.(entity) === false) {
-        ENTITY_REGISTRY.delete(entity);
-      }
+    if (!entity?.entityCollection || entity.entityCollection.contains?.(entity) === false) {
+      ENTITY_REGISTRY.delete(entity);
     }
   }
 }
