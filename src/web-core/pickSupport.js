@@ -158,6 +158,9 @@ if (!originalPick[PATCH_FLAG]) {
       if (pickedId instanceof Cesium.Entity && pickedId.gevMeta) return picked;
     }
 
+    // Terrain/globe rendering can occupy the top pick even when a GEV point
+    // is inside the touch target. Prefer a GEV entity from the drill results
+    // before falling back to Cesium's original top-most pick.
     const candidates = originalDrillPick.call(this, windowPosition, 20, pickWidth, pickHeight);
     for (const candidate of candidates) {
       const id = Cesium.defaultValue(candidate?.id, candidate?.primitive?.id);
