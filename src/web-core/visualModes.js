@@ -48,40 +48,49 @@ void main() {
   vec3 rgb = source.rgb;
   float lum = dot(rgb, vec3(0.299, 0.587, 0.114));
 
-  // NVG: preserve scene detail while applying a restrained phosphor-green lift.
+  // NVG: retain the original luminance structure while applying a restrained phosphor-green response.
   if (mode > 0.5 && mode < 1.5) {
-    float lifted = smoothstep(0.025, 0.82, lum);
-    vec3 phosphor = vec3(lifted * 0.08, lifted * 0.52, lifted * 0.17);
-    float detail = smoothstep(0.035, 0.88, lum);
-    rgb = mix(vec3(lum * 0.22), phosphor, 0.76);
-    rgb += vec3(0.0, 0.018, 0.006) * detail;
-    rgb *= 0.90 + 0.10 * sin(uv.y * 900.0 + time * 0.35);
+    float contrast = smoothstep(0.02, 0.92, lum);
+    float detail = mix(lum, contrast, 0.22);
+    vec3 phosphor = vec3(detail * 0.06, detail * 0.66, detail * 0.18);
+    rgb = mix(vec3(detail), phosphor, 0.78);
+    rgb *= 0.97 + 0.03 * sin(uv.y * 900.0 + time * 0.35);
   }
 
-  // FLIR: restrained thermal ramp with dark detail retained at the low end.
+  // FLIR: high-contrast thermal palette from black/deep blue through cyan, yellow, orange and white.
   if (mode > 1.5 && mode < 2.5) {
-    float t = smoothstep(0.035, 0.96, lum);
-    vec3 cold = vec3(0.006, 0.018, 0.030);
-    vec3 low = vec3(0.025, 0.16, 0.25);
-    vec3 mid = vec3(0.22, 0.52, 0.42);
-    vec3 warm = vec3(0.88, 0.62, 0.18);
-    vec3 hot = vec3(1.0, 0.88, 0.62);
-    vec3 thermal = t < 0.22
-      ? mix(cold, low, t / 0.22)
-      : t < 0.58
-        ? mix(low, mid, (t - 0.22) / 0.36)
-        : t < 0.84
-          ? mix(mid, warm, (t - 0.58) / 0.26)
-          : mix(warm, hot, (t - 0.84) / 0.16);
-    rgb = mix(vec3(lum * 0.18), thermal, 0.86);
+    float t = smoothstep(0.025, 0.93, lum);
+    vec3 deep = vec3(0.002, 0.006, 0.018);
+    vec3 blue = vec3(0.015, 0.055, 0.20);
+    vec3 cyan = vec3(0.02, 0.72, 0.86);
+    vec3 yellow = vec3(1.0, 0.92, 0.10);
+    vec3 orange = vec3(1.0, 0.30, 0.015);
+    vec3 white = vec3(1.0, 1.0, 0.96);
+    vec3 thermal;
+
+    if (t < 0.18) {
+      thermal = mix(deep, blue, t / 0.18);
+    } else if (t < 0.42) {
+      thermal = mix(blue, cyan, (t - 0.18) / 0.24);
+    } else if (t < 0.68) {
+      thermal = mix(cyan, yellow, (t - 0.42) / 0.26);
+    } else if (t < 0.88) {
+      thermal = mix(yellow, orange, (t - 0.68) / 0.20);
+    } else {
+      thermal = mix(orange, white, (t - 0.88) / 0.12);
+    }
+
+    // Keep a small luminance contribution so coastlines, terrain and structures retain spatial detail.
+    rgb = mix(vec3(lum * 0.24), thermal, 0.86);
   }
 
-  // CRT: subtle scanlines and vignette; the underlying globe remains dominant.
+  // CRT: normal imagery first, with only subtle phosphor, scanline and edge characteristics.
   if (mode > 2.5) {
-    float scan = 0.978 + 0.022 * sin(uv.y * 1100.0 + time * 1.8);
-    float vignette = 1.0 - 0.065 * smoothstep(0.45, 0.82, distance(uv, vec2(0.5)));
-    rgb *= scan * vignette;
-    rgb = mix(rgb, rgb * vec3(0.96, 1.0, 1.015), 0.42);
+    float lifted = clamp((rgb - 0.5) * 1.035 + 0.5, 0.0, 1.0);
+    float scan = 0.988 + 0.012 * sin(uv.y * 1100.0 + time * 1.8);
+    float vignette = 1.0 - 0.035 * smoothstep(0.48, 0.82, distance(uv, vec2(0.5)));
+    rgb = lifted * scan * vignette;
+    rgb = mix(rgb, rgb * vec3(0.985, 1.0, 1.01), 0.30);
   }
 
   out_FragColor = vec4(clamp(rgb, 0.0, 1.0), source.a);
