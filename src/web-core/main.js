@@ -11,6 +11,8 @@ const MAX_SATELLITES = 1500;
 const ION_TERRAIN_TIMEOUT_MS = 15_000;
 const DRAWER_TRANSITION_MS = 320;
 const DEFAULT_NAV_ALTITUDE = 15_000;
+const SATELLITE_CACHE_KEY = 'gev.celestrak.visualTle.v1';
+const SATELLITE_CACHE_TTL_MS = SATELLITE_REFRESH_MS;
 
 const state = {
   viewer: null,
@@ -143,27 +145,66 @@ async function loadAircraft() {
 async function loadSatellites() {
   const layer = state.layers.get('satellites');
   clearLayer('satellites');
-  const response = await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle', { mode: 'cors' });
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-  const text = await response.text();
+
+  let text = '';
+  let cacheAge = 0;
+  try {
+    const cached = JSON.parse(localStorage.getItem(SATELLITE_CACHE_KEY) || 'null');
+    if (cached?.text && Number.isFinite(Number(cached.timestamp))) {
+      cacheAge = Date.now() - Number(cached.timestamp);
+      if (cacheAge < SATELLITE_CACHE_TTL_MS) text = cached.text;
+    }
+  } catch {
+    // Ignore malformed browser cache and use the live request below.
+  }
+
+  if (!text) {
+    const response = await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle', {
+      mode: 'cors',
+      headers: { Accept: 'text/plain' },
+    });
+    if (!response.ok) {
+      throw new Error(`CELESTRAK ${response.status} ${response.statusText}`);
+    }
+    text = await response.text();
+    try {
+      localStorage.setItem(SATELLITE_CACHE_KEY, JSON.stringify({ timestamp: Date.now(), text }));
+    } catch {
+      // Storage is optional; the current page can still use the live payload.
+    }
+    cacheAge = 0;
+  }
+
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const now = new Date();
-  const updated = now.toISOString();
+  const updated = new Date().toISOString();
   let count = 0;
+
   for (let i = 0; i + 2 < lines.length && count < MAX_SATELLITES; i += 3) {
     if (!lines[i + 1]?.startsWith('1 ') || !lines[i + 2]?.startsWith('2 ')) continue;
-    const satrec = satellite.twoline2satrec(lines[i + 1], lines[i + 2]);
-    const position = satellite.propagate(satrec, now);
-    if (!position?.position || typeof position.position === 'boolean') continue;
-    const gmst = satellite.gstime(now);
-    const geo = satellite.eciToGeodetic(position.position, gmst);
-    const name = lines[i] || 'UNKNOWN SATELLITE';
-    const norad = lines[i + 1].slice(2, 7).trim();
-    addPoint(layer, satellite.degreesLong(geo.longitude), satellite.degreesLat(geo.latitude), geo.height * 1000, name, Cesium.Color.LIME, 4, {
-      type: 'SATELLITE', name, id: norad || name, source: 'CELESTRAK', updated, altitude: geo.height * 1000, norad,
-    });
-    count++;
+    try {
+      const satrec = satellite.twoline2satrec(lines[i + 1], lines[i + 2]);
+      const position = satellite.propagate(satrec, now);
+      if (!position?.position || typeof position.position === 'boolean') continue;
+      const gmst = satellite.gstime(now);
+      const geo = satellite.eciToGeodetic(position.position, gmst);
+      const name = lines[i] || 'UNKNOWN SATELLITE';
+      const norad = lines[i + 1].slice(2, 7).trim();
+      const inclination = Number.isFinite(Number(satrec.inclo)) ? satrec.inclo * 180 / Math.PI : Number.NaN;
+      const period = Number.isFinite(Number(satrec.no)) && satrec.no > 0 ? (2 * Math.PI / satrec.no) / 60 : Number.NaN;
+      addPoint(layer, satellite.degreesLong(geo.longitude), satellite.degreesLat(geo.latitude), geo.height * 1000, name, Cesium.Color.LIME, 7, {
+        type: 'SATELLITE', name, id: norad || name, source: 'CELESTRAK // VISUAL', updated,
+        altitude: geo.height * 1000, norad, inclination, period,
+      });
+      count++;
+    } catch (error) {
+      console.warn('[GEV] Satellite propagation skipped', error);
+    }
   }
+
+  if (!count) throw new Error('NO VALID SATELLITE POSITIONS');
+  const cacheLabel = cacheAge > 0 ? ` // CACHE ${Math.round(cacheAge / 60000)}M` : ' // LIVE';
+  setStatus(`SATELLITES: ${count} objects${cacheLabel}`, 'ok');
   return count;
 }
 
