@@ -4,6 +4,7 @@ const DEFAULT_PICK_SIZE = 25;
 const TOUCH_TAP_TOLERANCE = 14;
 const PATCH_FLAG = '__gevMobilePickPatched';
 const TOUCH_BRIDGE_FLAG = '__gevTouchBridgeInstalled';
+const RENDER_PATCH_FLAG = '__gevSceneCapturePatched';
 
 const originalPick = Cesium.Scene.prototype.pick;
 const originalDrillPick = Cesium.Scene.prototype.drillPick;
@@ -30,7 +31,7 @@ function findGevEntity(scene, windowPosition) {
   return undefined;
 }
 
-function showTouchFocus(element, clientX, clientY, message) {
+function showTouchFocus(clientX, clientY, message) {
   let focus = document.getElementById('gevTouchFocus');
   if (!focus) {
     focus = document.createElement('div');
@@ -53,8 +54,6 @@ function showTouchFocus(element, clientX, clientY, message) {
 
   focus.style.left = `${clientX}px`;
   focus.style.top = `${clientY}px`;
-  focus.textContent = '';
-  focus.setAttribute('aria-hidden', 'true');
   focus.style.opacity = '1';
   focus.style.transform = 'translate(-50%, -50%) scale(1)';
   window.clearTimeout(focus._gevTimer);
@@ -130,23 +129,20 @@ function installTouchBridge(handler) {
       event.clientX - rect.left,
       event.clientY - rect.top,
     );
-    const scene = handler._element?._cesiumWidget?.scene || handler._element?._cesiumViewer?.scene;
-    const canvas = element;
-    const viewer = canvas.__gevViewer;
-    const activeScene = viewer?.scene;
-    if (!activeScene) return;
+    const scene = element.__gevScene;
+    if (!scene) return;
 
-    showTouchFocus(element, event.clientX, event.clientY);
+    const entity = findGevEntity(scene, windowPosition);
+    showTouchFocus(event.clientX, event.clientY);
 
-    const entity = findGevEntity(activeScene, windowPosition);
     const action = handler.getInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK);
     if (typeof action === 'function') {
       action({ position: windowPosition });
     }
 
     if (!entity) {
-      const groundMessage = formatGroundPosition(activeScene, windowPosition);
-      if (groundMessage) showTouchFocus(element, event.clientX, event.clientY, groundMessage);
+      const groundMessage = formatGroundPosition(scene, windowPosition);
+      if (groundMessage) showTouchFocus(event.clientX, event.clientY, groundMessage);
     }
   }, { passive: true });
 }
@@ -176,6 +172,16 @@ if (!originalPick[PATCH_FLAG]) {
   Cesium.Scene.prototype.pick = expandedPick;
 }
 
+const originalRender = Cesium.Scene.prototype.render;
+if (originalRender && !originalRender[RENDER_PATCH_FLAG]) {
+  const patchedRender = function captureScene(time) {
+    if (this.canvas) this.canvas.__gevScene = this;
+    return originalRender.call(this, time);
+  };
+  patchedRender[RENDER_PATCH_FLAG] = true;
+  Cesium.Scene.prototype.render = patchedRender;
+}
+
 const originalSetInputAction = Cesium.ScreenSpaceEventHandler.prototype.setInputAction;
 const SET_ACTION_PATCH_FLAG = '__gevTouchSetInputPatched';
 
@@ -191,14 +197,3 @@ if (!originalSetInputAction[SET_ACTION_PATCH_FLAG]) {
   patchedSetInputAction[SET_ACTION_PATCH_FLAG] = true;
   Cesium.ScreenSpaceEventHandler.prototype.setInputAction = patchedSetInputAction;
 }
-
-// The viewer is created later by main.js. Capture it when the canvas becomes available.
-const viewerObserver = new MutationObserver(() => {
-  const canvas = document.querySelector('#cesiumContainer canvas');
-  const viewer = window.__GEV_VIEWER;
-  if (canvas && viewer) {
-    canvas.__gevViewer = viewer;
-    viewerObserver.disconnect();
-  }
-});
-viewerObserver.observe(document.documentElement, { childList: true, subtree: true });
