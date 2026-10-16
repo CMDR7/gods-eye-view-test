@@ -5,6 +5,7 @@ const POINT_PIXEL_SIZE = 7;
 const TOUCH_RADIUS_PX = 42;
 const COLLECTION_FLAG = '__gevNativeSatellitePickCollection';
 const SYNC_FLAG = '__gevNativeSatellitePickSync';
+const OVERLAY_FLAG = '__gevSatelliteScreenDiagnostic';
 
 function getScene() {
   const canvas = document.querySelector('#cesiumContainer canvas, #globe canvas');
@@ -55,53 +56,168 @@ function syncNativeSatellitePoints(scene) {
   }
 }
 
-function resolveNativeScreenTarget(scene, canvasX, canvasY) {
-  const collection = scene?.[COLLECTION_FLAG];
-  const canvas = scene?.canvas;
-  if (!collection || collection.show === false || !canvas) return undefined;
-
+function getCanvasMetrics(canvas) {
   const rect = canvas.getBoundingClientRect();
   const cssWidth = rect.width || canvas.clientWidth || 1;
   const cssHeight = rect.height || canvas.clientHeight || 1;
   const bufferWidth = canvas.width || cssWidth;
   const bufferHeight = canvas.height || cssHeight;
-  const scaleX = cssWidth / bufferWidth;
-  const scaleY = cssHeight / bufferHeight;
+  return {
+    cssWidth,
+    cssHeight,
+    bufferWidth,
+    bufferHeight,
+    scaleX: cssWidth / bufferWidth,
+    scaleY: cssHeight / bufferHeight,
+  };
+}
 
+function getProjectedPositions(scene, point, metrics, scratch) {
+  let raw;
+  try {
+    raw = point.computeScreenSpacePosition(scene, scratch.raw);
+  } catch {
+    return null;
+  }
+  if (!Cesium.defined(raw)) return null;
+
+  return {
+    raw: new Cesium.Cartesian2(raw.x, raw.y),
+    scaled: new Cesium.Cartesian2(raw.x * metrics.scaleX, raw.y * metrics.scaleY),
+  };
+}
+
+function ensureDiagnosticOverlay(scene) {
+  const canvas = scene?.canvas;
+  if (!canvas) return null;
+  let overlay = canvas[OVERLAY_FLAG];
+  if (overlay) return overlay;
+
+  overlay = document.createElement('div');
+  overlay.dataset.gevSatelliteDiagnostic = 'true';
+  Object.assign(overlay.style, {
+    position: 'fixed',
+    left: '0',
+    top: '0',
+    width: '100vw',
+    height: '100vh',
+    pointerEvents: 'none',
+    zIndex: '9000',
+    overflow: 'hidden',
+  });
+  document.body.appendChild(overlay);
+  canvas[OVERLAY_FLAG] = overlay;
+  return overlay;
+}
+
+function drawDiagnosticOverlay(scene) {
+  const canvas = scene?.canvas;
+  const overlay = ensureDiagnosticOverlay(scene);
+  if (!canvas || !overlay) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const metrics = getCanvasMetrics(canvas);
+  overlay.replaceChildren();
+
+  const collection = scene[COLLECTION_FLAG];
+  if (!collection || collection.show === false) return;
+
+  const scratch = { raw: new Cesium.Cartesian2() };
+  for (let index = 0; index < collection.length; index += 1) {
+    const point = collection.get(index);
+    if (!point || point.show === false) continue;
+    const positions = getProjectedPositions(scene, point, metrics, scratch);
+    if (!positions) continue;
+
+    const marker = document.createElement('div');
+    Object.assign(marker.style, {
+      position: 'fixed',
+      width: '14px',
+      height: '14px',
+      left: `${rect.left + positions.scaled.x - 7}px`,
+      top: `${rect.top + positions.scaled.y - 7}px`,
+      border: '1px solid rgba(255, 150, 40, 0.85)',
+      borderRadius: '50%',
+      boxSizing: 'border-box',
+      opacity: '0.75',
+    });
+    overlay.appendChild(marker);
+
+    const rawMarker = document.createElement('div');
+    Object.assign(rawMarker.style, {
+      position: 'fixed',
+      width: '5px',
+      height: '5px',
+      left: `${rect.left + positions.raw.x - 2.5}px`,
+      top: `${rect.top + positions.raw.y - 2.5}px`,
+      background: 'rgba(70, 220, 255, 0.9)',
+      borderRadius: '50%',
+      opacity: '0.8',
+    });
+    overlay.appendChild(rawMarker);
+  }
+}
+
+function resolveNativeScreenTarget(scene, canvasX, canvasY) {
+  const collection = scene?.[COLLECTION_FLAG];
+  const canvas = scene?.canvas;
+  if (!collection || collection.show === false || !canvas) return undefined;
+
+  const metrics = getCanvasMetrics(canvas);
   const tap = new Cesium.Cartesian2(canvasX, canvasY);
-  const projected = new Cesium.Cartesian2();
+  const scratch = { raw: new Cesium.Cartesian2() };
   let best;
   let bestDistance = TOUCH_RADIUS_PX;
+  let bestMode = '';
+  let bestProjected;
+  let visibleCount = 0;
 
   for (let index = 0; index < collection.length; index += 1) {
     const point = collection.get(index);
     if (!point || point.show === false) continue;
+    const positions = getProjectedPositions(scene, point, metrics, scratch);
+    if (!positions) continue;
+    visibleCount += 1;
 
-    let screenPosition;
-    try {
-      screenPosition = point.computeScreenSpacePosition(scene, projected);
-    } catch {
-      continue;
-    }
-    if (!Cesium.defined(screenPosition)) continue;
+    const rawDistance = Cesium.Cartesian2.distance(tap, positions.raw);
+    const scaledDistance = Cesium.Cartesian2.distance(tap, positions.scaled);
+    const distance = Math.min(rawDistance, scaledDistance);
+    const mode = rawDistance <= scaledDistance ? 'RAW' : 'SCALED';
+    const projected = mode === 'RAW' ? positions.raw : positions.scaled;
 
-    // Cesium documents PointPrimitive screen coordinates as top-left canvas
-    // coordinates. Normalize through the actual canvas buffer/CSS dimensions
-    // so Android device-pixel scaling cannot move the hit target away from
-    // the rendered point.
-    const normalized = new Cesium.Cartesian2(
-      screenPosition.x * scaleX,
-      screenPosition.y * scaleY,
-    );
-
-    const distance = Cesium.Cartesian2.distance(tap, normalized);
     if (distance <= bestDistance) {
       bestDistance = distance;
       best = point;
+      bestMode = mode;
+      bestProjected = projected;
     }
   }
 
-  return best?.id instanceof Cesium.Entity ? best.id : undefined;
+  return {
+    entity: best?.id instanceof Cesium.Entity ? best.id : undefined,
+    distance: best ? bestDistance : null,
+    mode: best ? bestMode : 'NONE',
+    projected: bestProjected,
+    visibleCount,
+    metrics,
+  };
+}
+
+function showTapDiagnostic(scene, event, result, canvasX, canvasY) {
+  const status = document.getElementById('status');
+  if (!status) return;
+
+  const scale = result?.metrics;
+  const scaleText = scale ? `${scale.scaleX.toFixed(2)}X/${scale.scaleY.toFixed(2)}Y` : '—';
+  if (result?.entity) {
+    status.textContent = `DIRECT SCREEN TARGET // ${result.mode} // D ${result.distance.toFixed(1)}PX // ${result.entity.gevMeta?.id || result.entity.id}`;
+    status.dataset.type = 'ok';
+    return;
+  }
+
+  const nearest = result?.distance == null ? '—' : `${result.distance.toFixed(1)}PX`;
+  status.textContent = `SCREEN DIAG // NO HIT // NEAREST ${nearest} // ${result?.visibleCount || 0} PTS // SCALE ${scaleText}`;
+  status.dataset.type = 'warn';
 }
 
 function installDirectTouchResolver(scene) {
@@ -138,18 +254,11 @@ function installDirectTouchResolver(scene) {
     const rect = canvas.getBoundingClientRect();
     const canvasX = event.clientX - rect.left;
     const canvasY = event.clientY - rect.top;
-    const entity = resolveNativeScreenTarget(scene, canvasX, canvasY);
+    const result = resolveNativeScreenTarget(scene, canvasX, canvasY);
+    showTapDiagnostic(scene, event, result, canvasX, canvasY);
 
-    const status = document.getElementById('status');
-    if (entity) {
-      if (status) {
-        status.textContent = `DIRECT SCREEN TARGET // SATELLITE // ${entity.gevMeta?.id || entity.id}`;
-        status.dataset.type = 'ok';
-      }
-      scene.__gevDirectSatelliteTarget = entity;
-    } else if (status) {
-      status.textContent = 'DIRECT SCREEN TEST // NO SATELLITE AT TAP';
-      status.dataset.type = 'warn';
+    if (result.entity) {
+      scene.__gevDirectSatelliteTarget = result.entity;
     }
   }, { passive: true });
 }
@@ -160,11 +269,12 @@ function start() {
     if (!scene) return;
     syncNativeSatellitePoints(scene);
     installDirectTouchResolver(scene);
+    drawDiagnosticOverlay(scene);
   };
 
   sync();
   window.setInterval(sync, POLL_MS);
-  console.info('[GEV] Native satellite PointPrimitive direct screen test ready');
+  console.info('[GEV] Native satellite screen diagnostic ready');
 }
 
 if (document.readyState === 'loading') {
