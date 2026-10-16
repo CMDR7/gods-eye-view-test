@@ -1,26 +1,38 @@
 import { Ion } from 'cesium';
 
 const STORAGE_KEY = 'gev.cesiumIonToken';
+const SESSION_KEY = 'gev.cesiumIonToken.session';
 const PERSIST_KEY = 'gev.cesiumIonToken.persist';
 
-function readStorage(key) {
+function readStorage(storage, key) {
   try {
-    return window.localStorage.getItem(key);
+    return storage.getItem(key);
   } catch {
     return null;
   }
 }
 
-function removeStorage(key) {
+function writeStorage(storage, key, value) {
   try {
-    window.localStorage.removeItem(key);
+    storage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function removeStorage(storage, key) {
+  try {
+    storage.removeItem(key);
   } catch {
     // Storage can be unavailable in private/restricted browser contexts.
   }
 }
 
 export function getStoredIonToken() {
-  return readStorage(STORAGE_KEY) || '';
+  return readStorage(window.localStorage, STORAGE_KEY)
+    || readStorage(window.sessionStorage, SESSION_KEY)
+    || '';
 }
 
 export function hasStoredIonToken() {
@@ -41,30 +53,34 @@ export function saveIonToken(token, persist = true) {
   Ion.defaultAccessToken = normalized;
 
   if (persist) {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, normalized);
-      window.localStorage.setItem(PERSIST_KEY, '1');
-    } catch {
+    removeStorage(window.sessionStorage, SESSION_KEY);
+    if (!writeStorage(window.localStorage, STORAGE_KEY, normalized)) {
       throw new Error('Browser storage is unavailable; use this token for the current session only.');
     }
+    writeStorage(window.localStorage, PERSIST_KEY, '1');
   } else {
-    removeStorage(STORAGE_KEY);
-    removeStorage(PERSIST_KEY);
+    removeStorage(window.localStorage, STORAGE_KEY);
+    removeStorage(window.localStorage, PERSIST_KEY);
+    if (!writeStorage(window.sessionStorage, SESSION_KEY, normalized)) {
+      throw new Error('Session storage is unavailable; enable “Remember on this device” or allow browser storage.');
+    }
   }
 
   return true;
 }
 
 export function clearIonToken() {
-  removeStorage(STORAGE_KEY);
-  removeStorage(PERSIST_KEY);
+  removeStorage(window.localStorage, STORAGE_KEY);
+  removeStorage(window.localStorage, PERSIST_KEY);
+  removeStorage(window.sessionStorage, SESSION_KEY);
   Ion.defaultAccessToken = undefined;
 }
 
 export function getIonTokenStatus() {
-  const token = getStoredIonToken();
+  const localToken = readStorage(window.localStorage, STORAGE_KEY);
+  const sessionToken = readStorage(window.sessionStorage, SESSION_KEY);
   return {
-    configured: Boolean(token),
-    persisted: readStorage(PERSIST_KEY) === '1',
+    configured: Boolean(localToken || sessionToken),
+    persisted: Boolean(localToken),
   };
 }
