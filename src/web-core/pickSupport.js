@@ -104,8 +104,17 @@ function installTouchBridge(handler) {
 
     const entity = findGevEntity(scene, windowPosition);
     showTouchFocus(event.clientX, event.clientY);
-    const action = handler.getInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK);
-    if (typeof action === 'function') action({ position: windowPosition, __gevTarget: entity });
+
+    // Hand the projected entity to the existing Cesium LEFT_CLICK selection
+    // path through Scene.pick(). This keeps main.js unchanged while avoiding
+    // another coordinate conversion or WebGL point-picking dependency.
+    scene.__gevTouchTarget = entity || null;
+    try {
+      const action = handler.getInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK);
+      if (typeof action === 'function') action({ position: windowPosition, __gevTarget: entity });
+    } finally {
+      scene.__gevTouchTarget = null;
+    }
 
     if (!entity) {
       const groundMessage = formatGroundPosition(scene, windowPosition);
