@@ -4,6 +4,8 @@ const $ = (id) => document.getElementById(id);
 const HOME_DURATION = 1.2;
 const LOCATION_TIMEOUT = 12_000;
 
+let visualModesLoad = null;
+
 function getViewer() {
   return document.querySelector('#globe canvas')?.__gevScene?.viewer || window.__gevViewer || null;
 }
@@ -104,6 +106,37 @@ function hidePanel(id) {
   if (panel) panel.hidden = true;
 }
 
+async function loadVisualModes() {
+  if (!visualModesLoad) {
+    visualModesLoad = import('./visualModes.js').catch((error) => {
+      visualModesLoad = null;
+      throw error;
+    });
+  }
+  return visualModesLoad;
+}
+
+async function openVisualPanel() {
+  showPanel('visualPanel');
+  setStatus('VISUAL SYSTEM // LOADING CONTROLS…');
+
+  // The visual subsystem is deliberately loaded only when requested. Its
+  // module installs the optics/HUD button handlers and imports its CSS.
+  try {
+    await loadVisualModes();
+    setStatus('VISUAL SYSTEM // READY', 'ok');
+  } catch (error) {
+    console.warn('[GEV] Visual controls unavailable', error);
+    hidePanel('visualPanel');
+    setStatus('VISUAL SYSTEM // LOAD ERROR', 'warn');
+  }
+}
+
+function closeCommandPanelForVisuals() {
+  const menu = $('menuToggle');
+  if (menu?.getAttribute('aria-expanded') === 'true') menu.click();
+}
+
 function install() {
   $('home')?.addEventListener('click', flyHome);
   $('locate')?.addEventListener('click', useCurrentLocation);
@@ -113,6 +146,11 @@ function install() {
   $('ionSettings')?.addEventListener('click', () => showPanel('ionPanel'));
   $('ionClose')?.addEventListener('click', () => hidePanel('ionPanel'));
   $('targetClose')?.addEventListener('click', () => hidePanel('targetPanel'));
+  $('visualSettings')?.addEventListener('click', () => {
+    closeCommandPanelForVisuals();
+    void openVisualPanel();
+  });
+  $('visualClose')?.addEventListener('click', () => hidePanel('visualPanel'));
 }
 
 if (document.readyState === 'loading') {
