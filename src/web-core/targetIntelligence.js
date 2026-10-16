@@ -3,18 +3,9 @@ import * as satellite from 'satellite.js';
 const CACHE_TTL_MS = 30_000;
 const cache = new Map();
 let requestSerial = 0;
+let lastTargetKey = '';
 
 const $ = (id) => document.getElementById(id);
-
-function setSlot(index, label, value) {
-  const slot = document.querySelector(`#targetDetail .targetDetailItem:nth-child(${index})`);
-  if (!slot) return;
-  slot.hidden = false;
-  const labelEl = slot.querySelector('[data-detail-label]');
-  const valueEl = slot.querySelector('[data-detail-value]');
-  if (labelEl) labelEl.textContent = label;
-  if (valueEl) valueEl.textContent = value ?? '—';
-}
 
 function renderDetails(items) {
   const detail = $('targetDetail');
@@ -39,16 +30,6 @@ function formatNumber(value, digits = 1) {
     : '—';
 }
 
-function formatUtc(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleString([], {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-    timeZone: 'UTC',
-  }) + ' UTC';
-}
-
 async function fetchJson(url) {
   const response = await fetch(url, { mode: 'cors', headers: { Accept: 'application/json' } });
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
@@ -59,20 +40,20 @@ async function aircraftDetails(hex) {
   const key = `aircraft:${hex}`;
   const cached = cache.get(key);
   if (cached && Date.now() - cached.time < CACHE_TTL_MS) return cached.data;
+
   const payload = await fetchJson(`https://api.adsb.lol/v2/hex/${encodeURIComponent(hex)}`);
   const aircraft = payload?.ac?.[0];
   if (!aircraft) throw new Error('AIRCRAFT RECORD NOT FOUND');
+
   const data = {
     callsign: aircraft.flight?.trim() || '—',
     registration: aircraft.r || aircraft.reg || '—',
     type: aircraft.t || '—',
-    description: aircraft.desc || '—',
     squawk: aircraft.squawk || '—',
     category: aircraft.category || '—',
     speed: Number.isFinite(Number(aircraft.gs)) ? `${formatNumber(aircraft.gs, 0)} KT` : '—',
     track: Number.isFinite(Number(aircraft.track)) ? `${formatNumber(aircraft.track, 1)}°` : '—',
     verticalRate: Number.isFinite(Number(aircraft.baro_rate)) ? `${formatNumber(aircraft.baro_rate * 0.00508, 1)} M/S` : '—',
-    lastSeen: Number.isFinite(Number(aircraft.seen)) ? `${formatNumber(aircraft.seen, 0)} S AGO` : '—',
   };
   cache.set(key, { time: Date.now(), data });
   return data;
@@ -82,11 +63,13 @@ async function satelliteDetails(norad) {
   const key = `satellite:${norad}`;
   const cached = cache.get(key);
   if (cached && Date.now() - cached.time < CACHE_TTL_MS) return cached.data;
+
   const response = await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle', {
     mode: 'cors',
     headers: { Accept: 'text/plain' },
   });
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+
   const lines = (await response.text()).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   let match;
   for (let i = 0; i + 2 < lines.length; i += 3) {
@@ -98,6 +81,7 @@ async function satelliteDetails(norad) {
     }
   }
   if (!match) throw new Error('TLE RECORD NOT FOUND');
+
   const satrec = satellite.twoline2satrec(match[1], match[2]);
   const now = new Date();
   const position = satellite.propagate(satrec, now);
@@ -105,10 +89,11 @@ async function satelliteDetails(norad) {
   const geo = position?.position && typeof position.position !== 'boolean'
     ? satellite.eciToGeodetic(position.position, gmst)
     : null;
+
   const data = {
     name: match[0],
     altitude: geo ? `${formatNumber(geo.height, 0)} KM` : '—',
-    inclination: Number.isFinite(Number(satrec.inclo)) ? `${formatNumber(satellite.radiansToDegrees(satrec.inclo), 2)}°` : '—',
+    inclination: Number.isFinite(Number(satrec.inclo)) ? `${formatNumber(satrec.inclo * 180 / Math.PI, 2)}°` : '—',
     eccentricity: Number.isFinite(Number(satrec.ecco)) ? Number(satrec.ecco).toFixed(6) : '—',
     period: Number.isFinite(Number(satrec.no)) && satrec.no > 0 ? `${formatNumber((2 * Math.PI / satrec.no) / 60, 1)} MIN` : '—',
   };
@@ -129,12 +114,19 @@ function earthquakeDetails() {
   };
 }
 
-async function enrichTarget() {
+function getTargetKey() {
   const panel = $('targetPanel');
-  if (!panel || panel.hidden) return;
+  if (!panel || panel.hidden) return '';
   const type = $('targetType')?.textContent?.trim() || '';
   const id = $('targetId')?.textContent?.trim() || '';
-  if (!type || !id || id === '—') return;
+  return type && id && id !== '—' ? `${type}:${id}` : '';
+}
+
+async function enrichTarget(targetKey) {
+  const panel = $('targetPanel');
+  if (!panel || panel.hidden) return;
+  const [type, ...idParts] = targetKey.split(':');
+  const id = idParts.join(':');
   const serial = ++requestSerial;
 
   if (type === 'EARTHQUAKE') {
@@ -187,12 +179,22 @@ async function enrichTarget() {
 function observeTargetPanel() {
   const panel = $('targetPanel');
   if (!panel) return;
-  const observer = new MutationObserver(() => {
+
+  const check = () => {
+    const key = getTargetKey();
+    if (!key) {
+      lastTargetKey = '';
+      return;
+    }
+    if (key === lastTargetKey) return;
+    lastTargetKey = key;
     window.clearTimeout(observeTargetPanel.timer);
-    observeTargetPanel.timer = window.setTimeout(enrichTarget, 40);
-  });
+    observeTargetPanel.timer = window.setTimeout(() => enrichTarget(key), 50);
+  };
+
+  const observer = new MutationObserver(check);
   observer.observe(panel, { attributes: true, childList: true, subtree: true, characterData: true });
-  enrichTarget();
+  check();
 }
 
 if (document.readyState === 'loading') {
