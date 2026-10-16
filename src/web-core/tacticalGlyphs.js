@@ -57,25 +57,25 @@ const GLYPHS = {
 };
 
 const BUTTON_GLYPHS = [
-  ['home', 'HOME // VIEW'],
-  ['locate', 'MY LOCATION'],
-  ['coordinateNav', 'COORDINATE NAV'],
-  ['aircraft', 'AIRCRAFT'],
-  ['satellites', 'SATELLITES'],
-  ['earthquakes', 'EARTHQUAKES'],
-  ['ionSettings', 'CESIUM ION'],
-  ['ionTerrain', 'ION TERRAIN'],
+  ['home', '#home', 'HOME // VIEW'],
+  ['locate', '#locate', 'MY LOCATION'],
+  ['coordinate', '#coordinateNav', 'COORDINATE NAV'],
+  ['aircraft', '[data-layer="aircraft"]', 'AIRCRAFT'],
+  ['satellites', '[data-layer="satellites"]', 'SATELLITES'],
+  ['earthquakes', '[data-layer="earthquakes"]', 'EARTHQUAKES'],
+  ['ion', '#ionSettings', 'CESIUM ION'],
+  ['terrain', '#ionTerrain', 'ION TERRAIN'],
 ];
 
 function installTacticalGlyphs() {
-  for (const [id, label] of BUTTON_GLYPHS) {
-    const button = document.getElementById(id);
+  for (const [glyphId, selector, label] of BUTTON_GLYPHS) {
+    const button = document.querySelector(selector);
     if (!button || button.querySelector('.gevGlyph')) continue;
 
-    const svg = GLYPHS[id === 'coordinateNav' ? 'coordinate' : id === 'ionSettings' ? 'ion' : id === 'ionTerrain' ? 'terrain' : id];
+    const svg = GLYPHS[glyphId];
     if (!svg) continue;
 
-    button.dataset.glyph = id;
+    button.dataset.glyph = glyphId;
     button.dataset.glyphLabel = label;
     button.setAttribute('aria-label', label);
     button.setAttribute('title', label);
