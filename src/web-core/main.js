@@ -1,10 +1,8 @@
 import * as Cesium from 'cesium';
-import satellite from 'satellite.js';
+import * as satellite from 'satellite.js';
 import { createOsmImagery } from '../maps/imagery.js';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import './style.css';
-
-window.CESIUM_BASE_URL = './cesium/';
 
 const REFRESH_MS = 60_000;
 const SATELLITE_REFRESH_MS = 2 * 60 * 60 * 1000;
@@ -109,7 +107,9 @@ async function loadAircraft() {
 async function loadSatellites() {
   const layer = state.layers.get('satellites');
   clearLayer('satellites');
-  const text = await (await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle', { mode: 'cors' })).text();
+  const response = await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle', { mode: 'cors' });
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  const text = await response.text();
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const now = new Date();
   let count = 0;
@@ -120,10 +120,7 @@ async function loadSatellites() {
     if (!position?.position || typeof position.position === 'boolean') continue;
     const gmst = satellite.gstime(now);
     const geo = satellite.eciToGeodetic(position.position, gmst);
-    const lon = satellite.degreesLong(geo.longitude);
-    const lat = satellite.degreesLat(geo.latitude);
-    const height = geo.height * 1000;
-    addPoint(layer, lon, lat, height, lines[i], Cesium.Color.LIME, 4);
+    addPoint(layer, satellite.degreesLong(geo.longitude), satellite.degreesLat(geo.latitude), geo.height * 1000, lines[i], Cesium.Color.LIME, 4);
     count++;
   }
   return count;
