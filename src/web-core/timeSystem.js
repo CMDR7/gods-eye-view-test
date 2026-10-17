@@ -2,58 +2,64 @@ import * as Cesium from 'cesium';
 
 const TIME_HUD_ID = 'gevTimeHud';
 const RETRY_LIMIT = 600;
+const UPDATE_INTERVAL_MS = 250;
 
 function getHud() {
   return document.getElementById(TIME_HUD_ID);
 }
 
-function formatUtc(time) {
-  const date = Cesium.JulianDate.toDate(time);
+function getScene() {
+  return document.querySelector('#globe canvas')?.__gevScene || null;
+}
+
+function formatUtc(date) {
   return date.toISOString().slice(11, 19);
 }
 
-function install(viewer, attempt = 0) {
+function install(attempt = 0) {
   const hud = getHud();
-  if (!viewer?.clock || !viewer?.scene || !hud) {
-    if (attempt < RETRY_LIMIT) {
-      requestAnimationFrame(() => install(window.__gevViewer, attempt + 1));
-    }
+  if (!hud) {
+    if (attempt < RETRY_LIMIT) requestAnimationFrame(() => install(attempt + 1));
     return;
   }
-
-  const clock = viewer.clock;
-  clock.clockStep = Cesium.ClockStep.SYSTEM_CLOCK_MULTIPLIER;
-  clock.multiplier = 1;
-  clock.shouldAnimate = true;
-  clock.canAnimate = true;
-  viewer.scene.globe.enableLighting = true;
-  viewer.scene.globe.dynamicAtmosphereLighting = true;
-  viewer.scene.globe.dynamicAtmosphereLightingFromSun = true;
 
   const mode = hud.querySelector('.gevTimeMode');
   const value = hud.querySelector('.gevTimeValue');
   const rate = hud.querySelector('.gevTimeRate');
   if (!mode || !value || !rate) return;
 
-  const update = (currentTime) => {
-    if (!currentTime) return;
-    const live = Math.abs(Cesium.JulianDate.secondsDifference(currentTime, Cesium.JulianDate.now())) < 2;
-    mode.textContent = live ? 'TIME // LIVE' : 'TIME // SIM';
-    value.textContent = `UTC ${formatUtc(currentTime)}`;
-    rate.textContent = `SIM ×${Number(clock.multiplier).toFixed(1)}`;
+  const scene = getScene();
+  if (scene?.globe) {
+    scene.globe.enableLighting = true;
+    scene.globe.dynamicAtmosphereLighting = true;
+    scene.globe.dynamicAtmosphereLightingFromSun = true;
+    scene.requestRender();
+  }
+
+  const update = () => {
+    const now = new Date();
+    mode.textContent = 'TIME // LIVE';
+    value.textContent = `UTC ${formatUtc(now)}`;
+    rate.textContent = 'SIM ×1.0';
   };
 
+  update();
   if (!window.__gevTimeSystem) {
-    clock.onTick.addEventListener(update);
+    window.__gevTimeSystem = {
+      update,
+      timer: window.setInterval(update, UPDATE_INTERVAL_MS),
+    };
+  } else {
+    window.__gevTimeSystem.update = update;
   }
-  update(clock.currentTime);
-  viewer.scene.requestRender();
 
-  window.__gevTimeSystem = { clock, viewer, update };
+  if (!scene && attempt < RETRY_LIMIT) {
+    requestAnimationFrame(() => install(attempt + 1));
+  }
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => install(window.__gevViewer), { once: true });
+  document.addEventListener('DOMContentLoaded', () => install(), { once: true });
 } else {
-  install(window.__gevViewer);
+  install();
 }
