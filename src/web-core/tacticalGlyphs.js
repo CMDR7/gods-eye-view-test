@@ -76,7 +76,103 @@ const BUTTON_GLYPHS = [
   ['terrain', '#ionTerrain', 'ION TERRAIN'],
 ];
 
+const LABEL_STYLE_ID = 'gev-tactical-label-styles';
+const LONG_PRESS_MS = 520;
+const LABEL_VISIBLE_MS = 1800;
+
+function installLabelStyles() {
+  if (document.getElementById(LABEL_STYLE_ID)) return;
+
+  const style = document.createElement('style');
+  style.id = LABEL_STYLE_ID;
+  style.textContent = `
+    .controlStack button[data-glyph-label]::after {
+      content: attr(data-glyph-label);
+      display: block;
+      position: absolute;
+      left: 50%;
+      top: calc(100% + 6px);
+      z-index: 80;
+      max-width: min(190px, 72vw);
+      padding: 5px 7px;
+      border: 1px solid rgba(0,220,255,.34);
+      border-radius: 3px;
+      background: rgba(3,8,12,.94);
+      box-shadow: 0 0 12px rgba(0,220,255,.10), inset 0 1px 0 rgba(180,240,255,.08);
+      color: rgba(223,250,255,.94);
+      font: 600 7px/1.15 'Orbitron', sans-serif;
+      letter-spacing: .09em;
+      white-space: nowrap;
+      text-align: center;
+      pointer-events: none;
+      opacity: 0;
+      transform: translate(-50%, -3px);
+      transition: opacity .14s ease, transform .14s ease;
+    }
+    .controlStack button[data-glyph-label]:hover::after,
+    .controlStack button[data-glyph-label]:focus-visible::after,
+    .controlStack button[data-label-open="true"]::after {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+    @media (hover: none) and (pointer: coarse) {
+      .controlStack button[data-glyph-label]:hover::after { opacity: 0; transform: translate(-50%, -3px); }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function installLongPressLabel(button) {
+  let timer = null;
+  let hideTimer = null;
+
+  const clearTimers = () => {
+    if (timer !== null) {
+      window.clearTimeout(timer);
+      timer = null;
+    }
+    if (hideTimer !== null) {
+      window.clearTimeout(hideTimer);
+      hideTimer = null;
+    }
+  };
+
+  button.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+
+    clearTimers();
+    button.dataset.labelOpen = 'false';
+    timer = window.setTimeout(() => {
+      timer = null;
+      button.dataset.labelOpen = 'true';
+      hideTimer = window.setTimeout(() => {
+        button.dataset.labelOpen = 'false';
+        hideTimer = null;
+      }, LABEL_VISIBLE_MS);
+    }, LONG_PRESS_MS);
+  });
+
+  for (const eventName of ['pointerup', 'pointercancel', 'pointerleave']) {
+    button.addEventListener(eventName, () => {
+      if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
+    });
+  }
+
+  button.addEventListener('click', () => {
+    button.dataset.labelOpen = 'false';
+    if (hideTimer !== null) {
+      window.clearTimeout(hideTimer);
+      hideTimer = null;
+    }
+  });
+}
+
 function installTacticalGlyphs() {
+  installLabelStyles();
+
   for (const [glyphId, selector, label] of BUTTON_GLYPHS) {
     const button = document.querySelector(selector);
     if (!button || button.querySelector('.gevGlyph')) continue;
@@ -86,9 +182,11 @@ function installTacticalGlyphs() {
 
     button.dataset.glyph = glyphId;
     button.dataset.glyphLabel = label;
+    button.dataset.labelOpen = 'false';
     button.setAttribute('aria-label', label);
     button.setAttribute('title', label);
     button.innerHTML = `<span class="gevGlyph" aria-hidden="true">${svg}</span>`;
+    installLongPressLabel(button);
   }
 }
 
