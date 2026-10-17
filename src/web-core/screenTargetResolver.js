@@ -11,6 +11,8 @@ function targetRadius(entity) {
       return SATELLITE_RADIUS_PX;
     case 'AIRCRAFT':
       return AIRCRAFT_RADIUS_PX;
+    case 'AIRPORT':
+      return 42;
     default:
       return GROUND_RADIUS_PX;
   }
@@ -25,15 +27,38 @@ function isSelectableEntity(entity, dataSource) {
     && entity.position;
 }
 
+function collectEntities(target, dataSource) {
+  if (dataSource?.show === false || !dataSource?.entities) return;
+  for (const entity of dataSource.entities.values || []) {
+    if (isSelectableEntity(entity, dataSource)) target.push(entity);
+  }
+}
+
 function getGevEntities(scene) {
   const entities = [];
+  const seen = new Set();
+
   const dataSources = scene?.dataSources?.values || [];
   for (const dataSource of dataSources) {
-    if (dataSource?.show === false || !dataSource?.entities) continue;
-    for (const entity of dataSource.entities.values || []) {
-      if (isSelectableEntity(entity, dataSource)) entities.push(entity);
+    const before = entities.length;
+    collectEntities(entities, dataSource);
+    for (let i = before; i < entities.length; i += 1) seen.add(entities[i]);
+  }
+
+  // Some Web Core modules maintain their own CustomDataSource inside the
+  // shared GEV layer registry while rendering through a dedicated primitive
+  // collection. Include those entities in the same target-resolution path.
+  for (const layer of scene?.__gevWebCoreLayers?.values?.() || []) {
+    if (!layer?.dataSource || layer.dataSource.show === false) continue;
+    for (const entity of layer.dataSource.entities?.values || []) {
+      if (seen.has(entity)) continue;
+      if (isSelectableEntity(entity, layer.dataSource)) {
+        entities.push(entity);
+        seen.add(entity);
+      }
     }
   }
+
   return entities;
 }
 
@@ -49,8 +74,7 @@ function angularToleranceRadians(scene, radiusPx) {
 // CSS pixels, drawing-buffer pixels, and Cesium window coordinates. The same
 // windowPosition already used by globe.pick() is used to construct the ray,
 // then every GEV entity is tested by angular separation from that ray. This is
-// particularly reliable for satellites because their world positions are
-// thousands of kilometres above the ellipsoid and are not surface points.
+// particularly reliable for satellites and custom-rendered ground targets.
 function resolveProjectedTarget(scene, windowPosition) {
   if (!scene || !Cesium.defined(windowPosition)) return undefined;
 
@@ -90,8 +114,6 @@ function resolveProjectedTarget(scene, windowPosition) {
   return best;
 }
 
-// Install before the Viewer/Scene is constructed so the touch bridge can use
-// the resolver on the first possible tap.
 if (!Cesium.Scene.prototype[RESOLVER_FLAG]) {
   Cesium.Scene.prototype.__gevResolveProjectedTarget = function resolveGevProjectedTarget(windowPosition) {
     return resolveProjectedTarget(this, windowPosition);
@@ -99,4 +121,4 @@ if (!Cesium.Scene.prototype[RESOLVER_FLAG]) {
   Cesium.Scene.prototype[RESOLVER_FLAG] = true;
 }
 
-console.info('[GEV] Ray-space target resolver ready');
+console.info('[GEV] Ray-space target resolver ready // GEV layer registry enabled');
