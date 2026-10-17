@@ -26,10 +26,6 @@ function getScene() {
   return document.querySelector('#globe canvas')?.__gevScene || null;
 }
 
-function getViewer() {
-  return getScene()?.viewer || window.__gevViewer || null;
-}
-
 function setStatus(message, type = 'info') {
   const el = $('status');
   if (!el) return;
@@ -46,20 +42,21 @@ function getTargetKey() {
 }
 
 function findSelectedEntity() {
-  const viewer = getViewer();
+  const scene = getScene();
   const key = getTargetKey();
-  if (!viewer || !key) return null;
+  if (!scene || !key) return null;
 
   const [type, ...idParts] = key.split(':');
   const id = idParts.join(':');
-  const dataSources = viewer.dataSources?.values || [];
 
-  // The target panel is only a presentation of the selection. Resolve the
-  // actual Entity from Cesium's Viewer-owned data sources, which is where
-  // Web Core's satellite/aircraft/earthquake entities live.
-  for (const dataSource of dataSources) {
+  // Web Core's viewer owns the data sources; Cesium Scene does not expose a
+  // `.viewer` back-reference. Resolve through the scene's authoritative data
+  // source collection, which contains the same Entity shown by targetPanel.
+  for (const dataSource of scene.dataSources?.values || []) {
     const entity = dataSource.entities?.getById?.(id);
-    if (entity?.gevMeta && entity.gevMeta.type === type && String(entity.gevMeta.id) === id) return entity;
+    if (entity?.gevMeta && entity.gevMeta.type === type && String(entity.gevMeta.id) === id) {
+      return entity;
+    }
 
     for (const candidate of dataSource.entities?.values || []) {
       const meta = candidate?.gevMeta;
@@ -73,8 +70,6 @@ function findSelectedEntity() {
 function getBaseRange(entity) {
   const altitude = Number(entity?.gevMeta?.altitude);
   if (entity?.gevMeta?.type === 'SATELLITE' && Number.isFinite(altitude) && altitude > 0) {
-    // Match Web Core's existing target-flight policy for space targets: a
-    // bounded altitude-relative framing that remains usable for LEO through GEO.
     return Cesium.Math.clamp(altitude * 0.75, SATELLITE_MIN_RANGE, SATELLITE_MAX_RANGE);
   }
   return BASE_CONTEXT_RANGE;
@@ -86,7 +81,6 @@ function getRange(entity, levelId) {
 }
 
 function getFocusPitch(entity) {
-  // Original GEV camera framing uses a shallower overhead pitch for satellites.
   return entity?.gevMeta?.type === 'SATELLITE'
     ? Cesium.Math.toRadians(-35)
     : Cesium.Math.toRadians(-62);
@@ -122,25 +116,21 @@ async function applyFocus(levelId = DEFAULT_LEVEL) {
     return;
   }
 
+  const scene = getScene();
+  const camera = scene?.camera;
+  if (!camera) {
+    setStatus('FOCUS ERROR // SCENE NOT READY', 'warn');
+    return;
+  }
+
   const position = entity.position?.getValue(Cesium.JulianDate.now());
   if (!Cesium.defined(position)) {
     setStatus('FOCUS ERROR // POSITION UNAVAILABLE', 'warn');
     return;
   }
 
-  const viewer = getViewer();
-  const camera = viewer?.camera;
-  if (!camera) {
-    setStatus('FOCUS ERROR // SCENE NOT READY', 'warn');
-    return;
-  }
-
   const level = FOCUS_LEVELS.find((item) => item.id === levelId) || FOCUS_LEVELS[2];
   const range = getRange(entity, level.id);
-
-  // Mirror the original GEV camera policy: frame the target with a real
-  // BoundingSphere, preserve heading, use a target-class pitch, and ease the
-  // transition with Cesium's cubic in/out camera motion.
   const sphereRadius = Math.max(1_000, Math.min(25_000, range * 0.02));
   const sphere = new Cesium.BoundingSphere(position, sphereRadius);
 
@@ -152,10 +142,10 @@ async function applyFocus(levelId = DEFAULT_LEVEL) {
 
   try {
     camera.cancelFlight?.();
-    // Focus owns the camera transfer. Release Cesium tracking first so the
-    // follow-camera cannot fight the explicit focus flight.
-    if (viewer.trackedEntity) viewer.trackedEntity = undefined;
 
+    // Focus is an explicit camera operation. The normal target-selection path
+    // already releases tracking when a target is selected; this module does
+    // not depend on a non-existent Scene.viewer back-reference.
     const completed = await camera.flyToBoundingSphere(sphere, {
       duration: FOCUS_DURATION_SEC,
       offset: new Cesium.HeadingPitchRange(
