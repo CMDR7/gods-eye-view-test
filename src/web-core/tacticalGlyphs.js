@@ -1,3 +1,5 @@
+import './airportLayer.js';
+
 const GLYPHS = {
   home: `
     <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
@@ -40,6 +42,12 @@ const GLYPHS = {
       <path class="glyph-seismic glyph-seismic--echo" d="M4 34h7l4-7 5 8 4-5 4 4h15" />
       <circle class="glyph-pulse" cx="24" cy="24" r="20" />
     </svg>`,
+  airport: `
+    <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+      <path class="glyph-contour" d="M6 34h36M9 27h30M13 20h22" />
+      <path class="glyph-airframe" d="M24 8l3 13 10 6-1 3-9-2.5v9l3 3.5h-3l-3-2-3 2h-3l3-3.5v-9L13 30l-1-3 9-6z" />
+      <circle class="glyph-core" cx="24" cy="39" r="2.5" />
+    </svg>`,
   ion: `
     <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
       <path class="glyph-hex" d="M24 5l16 9v20l-16 9-16-9V14z" />
@@ -71,6 +79,7 @@ const BUTTON_GLYPHS = [
   ['aircraft', '[data-layer="aircraft"]', 'AIRCRAFT'],
   ['satellites', '[data-layer="satellites"]', 'SATELLITES'],
   ['earthquakes', '[data-layer="earthquakes"]', 'EARTHQUAKES'],
+  ['airport', '#airportLayerButton', 'AIRPORTS // MAJOR'],
   ['visuals', '#visualSettings', 'VISUAL MODES'],
   ['ion', '#ionSettings', 'CESIUM ION'],
   ['terrain', '#ionTerrain', 'ION TERRAIN'],
