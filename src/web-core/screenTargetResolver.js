@@ -22,7 +22,6 @@ function isSelectableEntity(entity, dataSource) {
   return entity instanceof Cesium.Entity
     && Boolean(entity.gevMeta)
     && entity.show !== false
-    && entity.isShowing !== false
     && dataSource?.show !== false
     && entity.position;
 }
