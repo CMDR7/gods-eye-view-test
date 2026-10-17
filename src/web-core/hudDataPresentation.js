@@ -37,13 +37,19 @@ function getProfile() {
   return HUD_PRESENTATION[key] || DEFAULT_PROFILE;
 }
 
+function isSelectedEntity(entity) {
+  const panel = document.getElementById('targetPanel');
+  const targetId = document.getElementById('targetId')?.textContent?.trim();
+  return Boolean(panel && !panel.hidden && targetId && String(entity?.gevMeta?.id) === targetId);
+}
+
 function setColorAlpha(color, alpha) {
   if (!color || typeof color.withAlpha !== 'function') return color;
   return color.withAlpha(alpha);
 }
 
 function applyEntity(entity, profile) {
-  if (!entity?.gevVisual || !entity?.point) return;
+  if (!entity?.gevVisual || !entity?.point || isSelectedEntity(entity)) return;
 
   const baseSize = Number(entity.gevVisual.pixelSize);
   const baseColor = entity.gevVisual.color;
@@ -55,9 +61,7 @@ function applyEntity(entity, profile) {
   if (entity.label) {
     const type = String(entity.gevMeta?.type || '').toUpperCase();
     entity.label.show = profile.labelTypes.has(type);
-    if (entity.label.font) {
-      entity.label.font = `${11 * profile.labelScale}px monospace`;
-    }
+    entity.label.font = `${11 * profile.labelScale}px monospace`;
   }
 
   const satellitePoint = entity.__gevSatellitePoint;
@@ -92,6 +96,9 @@ function observeLayers(scene) {
     collection.collectionChanged.addEventListener((_collection, added, changed) => {
       const profile = getProfile();
       for (const entity of [...(added || []), ...(changed || [])]) applyEntity(entity, profile);
+      window.setTimeout(() => {
+        for (const entity of [...(added || []), ...(changed || [])]) applyEntity(entity, profile);
+      }, 0);
     });
   }
   return true;
@@ -116,10 +123,6 @@ function install(attempt = 0) {
 
   observeLayers(scene);
   applyPresentation();
-  setInterval(() => {
-    observeLayers(scene);
-    applyPresentation();
-  }, 1000);
 }
 
 if (document.readyState === 'loading') {
