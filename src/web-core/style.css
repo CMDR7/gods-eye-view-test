@@ -39,7 +39,6 @@ button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
 .controlStack button::after { display: none; }
 .controlStack button:focus-visible { outline: 1px solid rgba(0,220,255,.9); outline-offset: 2px; }
 
-/* GEV Tactical Glyph System — monochrome, vector-sharp, state-driven motion. */
 .gevGlyph { width: 34px; height: 34px; display: block; color: rgba(223,250,255,.88); pointer-events: none; }
 .gevGlyph svg { width: 100%; height: 100%; display: block; overflow: visible; fill: none; stroke: currentColor; stroke-width: 1.25; stroke-linecap: round; stroke-linejoin: round; }
 .controlStack button.active .gevGlyph { color: #74eaff; filter: drop-shadow(0 0 4px rgba(0,220,255,.42)); }
@@ -91,12 +90,44 @@ button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
 #status { left: max(14px, env(safe-area-inset-left)); bottom: max(58px, calc(58px + env(safe-area-inset-bottom))); }
 .commandPanel { padding-top: max(18px, calc(18px + env(safe-area-inset-top))); padding-right: max(18px, calc(18px + env(safe-area-inset-right))); padding-bottom: max(18px, calc(18px + env(safe-area-inset-bottom))); padding-left: max(18px, calc(18px + env(safe-area-inset-left))); }
 
-/* Target inspection: keep the target controls themselves visible without a
-   separate panel shell creating an unwanted outlined block beneath the HUD. */
+/* Target inspection: information is a lightweight tactical readout rather than a large modal shell. */
 #targetPanel {
+  position: fixed;
+  top: calc(max(14px, env(safe-area-inset-top)) + 104px);
+  left: max(14px, env(safe-area-inset-left));
+  z-index: 15;
+  width: min(420px, calc(100vw - 28px));
+  box-sizing: border-box;
+  padding: 0;
+  pointer-events: auto;
+  color: var(--gev-text);
   background: transparent !important;
   border: 0 !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+}
+#targetPanel .panelHeader { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:22px; padding:0 0 5px; border-bottom:1px solid rgba(0,220,255,.25); font:600 8px/1 'Orbitron',sans-serif; letter-spacing:.12em; color:rgba(116,234,255,.9); text-shadow:0 0 7px rgba(0,220,255,.16); }
+#targetPanel .panelClose { width:25px; height:22px; padding:2px; pointer-events:auto; }
+#targetPanel .targetIdentity { padding:6px 0 5px; }
+#targetPanel .targetType { font:600 7px/1.1 'Orbitron',sans-serif; letter-spacing:.13em; color:rgba(116,234,255,.72); }
+#targetPanel .targetName { margin-top:3px; font:600 12px/1.05 'Orbitron',sans-serif; letter-spacing:.08em; color:#e8fcff; text-shadow:0 0 8px rgba(0,220,255,.16); }
+#targetPanel .telemetryGrid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px 12px; padding:5px 0 6px; border-top:1px solid rgba(120,220,255,.10); border-bottom:1px solid rgba(120,220,255,.10); }
+#targetPanel .telemetryItem { min-width:0; display:flex; align-items:baseline; gap:6px; }
+#targetPanel .telemetryItem span,#targetPanel .targetDetailItem span { flex:0 0 auto; font:600 6px/1.1 'Orbitron',sans-serif; letter-spacing:.08em; color:rgba(159,178,189,.78); }
+#targetPanel .telemetryItem strong,#targetPanel .targetDetailItem strong { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:500 7px/1.1 'Orbitron',sans-serif; letter-spacing:.035em; color:rgba(223,250,255,.92); }
+#targetPanel .targetDetailGrid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px 12px; padding:6px 0 7px; }
+#targetPanel .targetDetailItem { min-width:0; display:flex; align-items:baseline; gap:6px; }
+#targetPanel .targetDetailItem[hidden] { display:none; }
+#targetPanel .targetActions { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:5px; padding-top:4px; }
+#targetPanel .targetActions button { min-width:0; min-height:32px; padding:5px 4px; font-size:7px; letter-spacing:.055em; }
+#targetPanel .focusLevels { margin-top:4px; }
+
+@media (max-width:520px) {
+  #targetPanel { width:calc(100vw - 28px); top:calc(max(14px, env(safe-area-inset-top)) + 104px); }
+  #targetPanel .telemetryGrid,#targetPanel .targetDetailGrid { gap:3px 8px; }
+  #targetPanel .telemetryItem span,#targetPanel .targetDetailItem span { font-size:5px; }
+  #targetPanel .telemetryItem strong,#targetPanel .targetDetailItem strong { font-size:6px; }
+  #targetPanel .targetName { font-size:10px; }
+  #targetPanel .targetActions button { min-height:30px; font-size:6px; }
 }
