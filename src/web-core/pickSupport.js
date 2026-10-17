@@ -29,6 +29,9 @@ function nativePick(scene, windowPosition) {
 }
 
 function projectedPick(scene, windowPosition) {
+  const airport = scene.__gevResolveAirportTarget?.(windowPosition);
+  if (airport?.gevMeta) return { entity: airport, source: 'AIRPORT_SCREEN' };
+
   const entity = scene.__gevResolveProjectedTarget?.(windowPosition);
   return entity ? { entity, source: 'PROJECTED' } : undefined;
 }
@@ -132,8 +135,13 @@ function installTouchBridge(handler) {
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
     const height = rect.height || element.clientHeight || 0;
-    const primaryPosition = new Cesium.Cartesian2(x, height - y);
-    const alternatePosition = new Cesium.Cartesian2(x, y);
+
+    // Cesium screen/window coordinates are top-left origin: x grows right,
+    // y grows down. The previous bridge inverted y and relied on a secondary
+    // fallback, which made touch selection dependent on the consumer's own
+    // coordinate handling.
+    const primaryPosition = new Cesium.Cartesian2(x, y);
+    const alternatePosition = new Cesium.Cartesian2(x, height - y);
     const scene = element.__gevScene;
     if (!scene) return;
 
