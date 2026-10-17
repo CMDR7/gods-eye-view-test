@@ -10,7 +10,6 @@ function destinationFromVector(latitudeDeg, longitudeDeg, altitudeM, distanceM, 
   const longitude = longitudeDeg * DEG_TO_RAD;
   const bearing = bearingDeg * DEG_TO_RAD;
   const angularDistance = distanceM / EARTH_RADIUS_M;
-
   const sinLat = Math.sin(latitude);
   const cosLat = Math.cos(latitude);
   const sinAngular = Math.sin(angularDistance);
@@ -23,12 +22,12 @@ function destinationFromVector(latitudeDeg, longitudeDeg, altitudeM, distanceM, 
     Math.sin(bearing) * sinAngular * cosLat,
     cosAngular - sinLat * Math.sin(nextLatitude)
   );
-
   const nextAltitude = altitudeM + (verticalRateMps || 0) * elapsedSeconds;
+
   return Cesium.Cartesian3.fromDegrees(
     nextLongitude * RAD_TO_DEG,
     nextLatitude * RAD_TO_DEG,
-    Math.max(0, nextAltitude)
+    Math.max(0, nextAltitude),
   );
 }
 
@@ -36,8 +35,7 @@ function attachMotion(entity) {
   const meta = entity?.gevMeta;
   const position = meta?.position;
   const motion = meta?.motion;
-  if (!entity || meta?.type !== 'AIRCRAFT' || !position || !motion) return;
-  if (entity.__gevAircraftMotion) return;
+  if (!entity || meta?.type !== 'AIRCRAFT' || !position || !motion || entity.__gevAircraftMotion) return;
   if (![position.latitude, position.longitude, position.altitudeBarometricM, motion.groundSpeedMps, motion.trackDeg]
     .every((value) => Number.isFinite(Number(value)))) return;
 
@@ -66,14 +64,17 @@ function attachMotion(entity) {
 
 function install(attempt = 0) {
   const scene = document.querySelector('#globe canvas')?.__gevScene || null;
-  const layers = scene?.__gevWebCoreLayers;
-  const aircraftLayer = layers?.get('aircraft');
+  const aircraftLayer = scene?.__gevWebCoreLayers?.get('aircraft');
 
   if (aircraftLayer) {
     for (const entity of aircraftLayer.dataSource.entities.values) attachMotion(entity);
+    aircraftLayer.dataSource.entities.collectionChanged.addEventListener((_collection, added) => {
+      for (const entity of added) attachMotion(entity);
+    });
+    return;
   }
 
-  if (!scene && attempt < 600) requestAnimationFrame(() => install(attempt + 1));
+  if (attempt < 600) requestAnimationFrame(() => install(attempt + 1));
 }
 
 if (document.readyState === 'loading') {
