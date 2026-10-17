@@ -137,6 +137,15 @@ function closeCommandPanelForVisuals() {
   if (menu?.getAttribute('aria-expanded') === 'true') menu.click();
 }
 
+function startAtHomeView(attempt = 0) {
+  const scene = getScene();
+  if (scene) {
+    scene.camera.flyHome(0);
+    return;
+  }
+  if (attempt < 30) requestAnimationFrame(() => startAtHomeView(attempt + 1));
+}
+
 function install() {
   $('home')?.addEventListener('click', flyHome);
   $('locate')?.addEventListener('click', useCurrentLocation);
@@ -152,6 +161,7 @@ function install() {
     void openVisualPanel();
   });
   $('visualClose')?.addEventListener('click', () => hidePanel('visualPanel'));
+  startAtHomeView();
 }
 
 if (document.readyState === 'loading') {
