@@ -31,7 +31,7 @@ function destinationFromVector(latitudeDeg, longitudeDeg, altitudeM, distanceM, 
   );
 }
 
-function attachMotion(entity) {
+export function attachAircraftMotion(entity) {
   const meta = entity?.gevMeta;
   const position = meta?.position;
   const motion = meta?.motion;
@@ -67,9 +67,9 @@ function install(attempt = 0) {
   const aircraftLayer = scene?.__gevWebCoreLayers?.get('aircraft');
 
   if (aircraftLayer) {
-    for (const entity of aircraftLayer.dataSource.entities.values) attachMotion(entity);
+    for (const entity of aircraftLayer.dataSource.entities.values) attachAircraftMotion(entity);
     aircraftLayer.dataSource.entities.collectionChanged.addEventListener((_collection, added) => {
-      for (const entity of added) attachMotion(entity);
+      for (const entity of added) attachAircraftMotion(entity);
     });
     return;
   }
