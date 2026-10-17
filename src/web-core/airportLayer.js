@@ -6,6 +6,7 @@ const BUTTON_ID = 'airportLayerButton';
 const DATASET_LABEL = 'AIRPORTS // MAJOR';
 const INSTALL_KEY = '__gevAirportLayerInstalled';
 const POINT_COLLECTION_KEY = '__gevAirportPointCollection';
+const AIRPORT_PICK_RADIUS_PX = 26;
 
 function getScene() {
   return document.querySelector('#globe canvas')?.__gevScene || null;
@@ -23,22 +24,6 @@ function formatNumber(value, digits = 0) {
   return Number.isFinite(numeric) ? numeric.toLocaleString(undefined, { maximumFractionDigits: digits }) : '—';
 }
 
-function setDetail(items) {
-  const detail = document.getElementById('targetDetail');
-  if (!detail) return;
-  const slots = detail.querySelectorAll('.targetDetailItem');
-  slots.forEach((slot, index) => {
-    const item = items[index];
-    slot.hidden = !item;
-    if (!item) return;
-    const label = slot.querySelector('[data-detail-label]');
-    const value = slot.querySelector('[data-detail-value]');
-    if (label) label.textContent = item.label;
-    if (value) value.textContent = item.value ?? '—';
-  });
-  detail.hidden = items.length === 0;
-}
-
 function renderAirportTarget() {
   const panel = document.getElementById('targetPanel');
   if (!panel || panel.hidden) return;
@@ -49,15 +34,12 @@ function renderAirportTarget() {
   const meta = entity?.gevMeta;
   if (!meta) return;
 
-  setDetail([
-    { label: 'ICAO / IDENT', value: meta.ident || meta.gpsCode || meta.id },
-    { label: 'IATA', value: meta.iata || '—' },
-    { label: 'CITY / MUNICIPALITY', value: meta.municipality || '—' },
-    { label: 'COUNTRY', value: meta.isoCountry || '—' },
-    { label: 'ELEVATION', value: `${formatNumber(meta.elevationFt, 0)} FT MSL` },
-    { label: 'TYPE', value: 'LARGE AIRPORT' },
-    { label: 'SOURCE', value: meta.source || 'OURAIRPORTS' },
-  ]);
+  const detail = document.getElementById('targetDetail');
+  if (detail) detail.hidden = false;
+  const label = document.getElementById('targetDetailLabel');
+  const value = document.getElementById('targetDetailValue');
+  if (label) label.textContent = 'IATA / CITY';
+  if (value) value.textContent = `${meta.iata || meta.ident || meta.gpsCode || meta.id} / ${meta.municipality || meta.isoCountry || '—'}`;
 }
 
 function installTargetDetails() {
@@ -80,12 +62,47 @@ function getPointCollection(scene) {
   return collection;
 }
 
+function resolveAirportTarget(scene, windowPosition) {
+  const collection = scene?.[POINT_COLLECTION_KEY];
+  if (!collection?.show || !Cesium.defined(windowPosition)) return undefined;
+
+  const screen = new Cesium.Cartesian2();
+  let best;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (let index = 0; index < collection.length; index += 1) {
+    const point = collection.get(index);
+    if (!point?.show || !point.id?.gevMeta) continue;
+
+    let projected;
+    try {
+      projected = point.computeScreenSpacePosition(scene, screen);
+    } catch {
+      continue;
+    }
+    if (!projected) continue;
+
+    const distance = Cesium.Cartesian2.distance(projected, windowPosition);
+    const hitRadius = Math.max(AIRPORT_PICK_RADIUS_PX, Number(point.pixelSize || 6) * 0.5 + 12);
+    if (distance <= hitRadius && distance < bestDistance) {
+      best = point.id;
+      bestDistance = distance;
+    }
+  }
+
+  return best;
+}
+
+function installPickResolver(scene) {
+  scene.__gevResolveAirportTarget = (windowPosition) => resolveAirportTarget(scene, windowPosition);
+}
+
 function getHudProfile() {
   const hud = document.documentElement.dataset.gevHud || 'tactical';
-  if (hud === 'operator') return { size: 6.96, alpha: 1, labels: true };
-  if (hud === 'minimal') return { size: 4.92, alpha: 0.86, labels: false };
-  if (hud === 'cyber') return { size: 6.3, alpha: 0.96, labels: true };
-  return { size: 6, alpha: 1, labels: false };
+  if (hud === 'operator') return { size: 6.96, alpha: 1 };
+  if (hud === 'minimal') return { size: 4.92, alpha: 0.86 };
+  if (hud === 'cyber') return { size: 6.3, alpha: 0.96 };
+  return { size: 6, alpha: 1 };
 }
 
 function syncPointVisuals(scene, layer) {
@@ -129,6 +146,7 @@ function createLayer(scene) {
   };
   layers.set(LAYER_ID, layer);
   installHudSync(scene, layer);
+  installPickResolver(scene);
   return layer;
 }
 
@@ -178,7 +196,10 @@ async function populateLayer(scene, layer) {
       color: Cesium.Color.ORANGE,
       outlineColor: Cesium.Color.BLACK,
       outlineWidth: 1,
-      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      // Keep airports depth-tested at globe scale so back-side airports do not
+      // bleed through the planet. The explicit screen-space picker remains
+      // available for the rendered points on the visible hemisphere.
+      disableDepthTestDistance: 5_000,
       id: entity,
     });
     entity.__gevAirportPoint = point;
