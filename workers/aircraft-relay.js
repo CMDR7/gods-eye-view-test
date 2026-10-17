@@ -52,9 +52,7 @@ export default {
     }
 
     const path = `/point/${Number(lat).toFixed(4)}/${Number(lon).toFixed(4)}/${radius}`;
-    let lastError = 'AIRCRAFT SOURCES UNAVAILABLE';
-
-    for (const [provider, base] of SOURCES) {
+    const results = await Promise.all(SOURCES.map(async ([provider, base]) => {
       try {
         const upstream = await fetch(`${base}${path}`, {
           headers: {
@@ -64,24 +62,62 @@ export default {
         });
 
         if (!upstream.ok) {
-          lastError = `${provider} ${upstream.status}`;
-          continue;
+          return {
+            provider,
+            ok: false,
+            status: upstream.status,
+            error: `${provider} ${upstream.status}`,
+          };
         }
 
         const payload = await upstream.json();
         const aircraft = Array.isArray(payload?.ac) ? payload.ac : [];
 
-        return json({
-          ...payload,
-          ac: aircraft,
+        return {
           provider,
-          queriedAt: new Date().toISOString(),
-        });
+          ok: true,
+          status: upstream.status,
+          payload,
+          aircraft,
+        };
       } catch (error) {
-        lastError = `${provider} ${error?.message || 'REQUEST FAILED'}`;
+        return {
+          provider,
+          ok: false,
+          status: 0,
+          error: `${provider} ${error?.message || 'REQUEST FAILED'}`,
+        };
       }
+    }));
+
+    const successful = results.find(result => result.ok);
+    if (successful) {
+      return json({
+        ...successful.payload,
+        ac: successful.aircraft,
+        provider: successful.provider,
+        queriedAt: new Date().toISOString(),
+        diagnostics: results.map(result => ({
+          provider: result.provider,
+          ok: result.ok,
+          status: result.status,
+          aircraft: result.ok ? result.aircraft.length : 0,
+          error: result.ok ? null : result.error,
+        })),
+      });
     }
 
-    return json({ error: lastError, ac: [] }, 503);
+    return json({
+      error: 'AIRCRAFT SOURCES UNAVAILABLE',
+      ac: [],
+      queriedAt: new Date().toISOString(),
+      diagnostics: results.map(result => ({
+        provider: result.provider,
+        ok: result.ok,
+        status: result.status,
+        aircraft: 0,
+        error: result.error,
+      })),
+    }, 503);
   },
 };
