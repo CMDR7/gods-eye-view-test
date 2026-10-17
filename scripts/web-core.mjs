@@ -34,14 +34,28 @@ child.on('exit', async (code, signal) => {
     process.exit(code ?? 1);
   }
 
-  // GitHub Pages requires the deployed artifact to expose its entry document
-  // as index.html at the artifact root. Keep web-core.html as the Vite input,
-  // then provide the Pages-compatible entry point in the generated artifact.
+  // Generate the Web Core app/shortcut icons from the original target mark.
+  // The generated PNGs replace the legacy GEV eye/globe artwork in the deployed artifact.
   try {
+    const iconGenerator = resolve(scriptDir, 'generate-web-core-icons.mjs');
+    const iconProcess = spawn(process.execPath, [iconGenerator], {
+      stdio: 'inherit',
+      shell: false,
+    });
+
+    await new Promise((resolvePromise, rejectPromise) => {
+      iconProcess.on('error', rejectPromise);
+      iconProcess.on('exit', (iconCode, iconSignal) => {
+        if (iconSignal) rejectPromise(new Error(`Icon generation terminated by ${iconSignal}`));
+        else if ((iconCode ?? 1) !== 0) rejectPromise(new Error(`Icon generation exited with ${iconCode}`));
+        else resolvePromise();
+      });
+    });
+
     await copyFile('dist-web-core/web-core.html', 'dist-web-core/index.html');
     console.log('Web Core Pages entry created: dist-web-core/index.html');
   } catch (error) {
-    console.error(`Unable to create Pages entry point: ${error.message}`);
+    console.error(`Unable to finalize Web Core artifact: ${error.message}`);
     process.exit(1);
   }
 
