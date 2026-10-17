@@ -1,16 +1,19 @@
 import * as Cesium from 'cesium';
 
 const FOCUS_LEVELS = [
-  { id: 'global', label: 'GLOBAL', factor: 4.0 },
-  { id: 'regional', label: 'REGIONAL', factor: 2.0 },
-  { id: 'local', label: 'LOCAL', factor: 0.8 },
-  { id: 'tight', label: 'TIGHT', factor: 0.25 },
-  { id: 'target', label: 'TARGET', factor: 0.08 },
+  { id: 'global', label: 'GLOBAL', factor: 3.0 },
+  { id: 'regional', label: 'REGIONAL', factor: 1.8 },
+  { id: 'local', label: 'LOCAL', factor: 1.0 },
+  { id: 'tight', label: 'TIGHT', factor: 0.5 },
+  { id: 'target', label: 'TARGET', factor: 0.25 },
 ];
 const DEFAULT_LEVEL = 'local';
 const MIN_RANGE = 2_500;
 const MAX_RANGE = 20_000_000;
 const BASE_CONTEXT_RANGE = 250_000;
+const SATELLITE_MIN_RANGE = 150_000;
+const SATELLITE_MAX_RANGE = 1_500_000;
+const FOCUS_DURATION_SEC = 1.9;
 
 const $ = (id) => document.getElementById(id);
 
@@ -21,6 +24,10 @@ let focusBusy = false;
 
 function getScene() {
   return document.querySelector('#globe canvas')?.__gevScene || null;
+}
+
+function getViewer() {
+  return getScene()?.viewer || window.__gevViewer || null;
 }
 
 function setStatus(message, type = 'info') {
@@ -39,23 +46,17 @@ function getTargetKey() {
 }
 
 function findSelectedEntity() {
+  const viewer = getViewer();
   const key = getTargetKey();
-  if (!key) return null;
+  if (!viewer || !key) return null;
 
   const [type, ...idParts] = key.split(':');
   const id = idParts.join(':');
-  const scene = getScene();
-  if (!scene) return null;
+  const dataSources = viewer.dataSources?.values || [];
 
-  // Use GEV's authoritative layer registry rather than relying only on
-  // Cesium's aggregate DataSourceCollection. Satellites are owned by the
-  // Web Core layer registry and their inspection panel resolves to the same
-  // Entity instance held by that layer.
-  const layerRegistry = scene.__gevWebCoreLayers;
-  const dataSources = layerRegistry instanceof Map
-    ? Array.from(layerRegistry.values()).map((layer) => layer?.dataSource).filter(Boolean)
-    : Array.from(scene.dataSources?.values || []);
-
+  // The target panel is only a presentation of the selection. Resolve the
+  // actual Entity from Cesium's Viewer-owned data sources, which is where
+  // Web Core's satellite/aircraft/earthquake entities live.
   for (const dataSource of dataSources) {
     const entity = dataSource.entities?.getById?.(id);
     if (entity?.gevMeta && entity.gevMeta.type === type && String(entity.gevMeta.id) === id) return entity;
@@ -71,8 +72,10 @@ function findSelectedEntity() {
 
 function getBaseRange(entity) {
   const altitude = Number(entity?.gevMeta?.altitude);
-  if (Number.isFinite(altitude) && altitude > 10_000) {
-    return Math.max(50_000, altitude * 0.75);
+  if (entity?.gevMeta?.type === 'SATELLITE' && Number.isFinite(altitude) && altitude > 0) {
+    // Match Web Core's existing target-flight policy for space targets: a
+    // bounded altitude-relative framing that remains usable for LEO through GEO.
+    return Cesium.Math.clamp(altitude * 0.75, SATELLITE_MIN_RANGE, SATELLITE_MAX_RANGE);
   }
   return BASE_CONTEXT_RANGE;
 }
@@ -80,6 +83,13 @@ function getBaseRange(entity) {
 function getRange(entity, levelId) {
   const level = FOCUS_LEVELS.find((item) => item.id === levelId) || FOCUS_LEVELS[2];
   return Cesium.Math.clamp(getBaseRange(entity) * level.factor, MIN_RANGE, MAX_RANGE);
+}
+
+function getFocusPitch(entity) {
+  // Original GEV camera framing uses a shallower overhead pitch for satellites.
+  return entity?.gevMeta?.type === 'SATELLITE'
+    ? Cesium.Math.toRadians(-35)
+    : Cesium.Math.toRadians(-62);
 }
 
 function renderFocusState() {
@@ -118,8 +128,8 @@ async function applyFocus(levelId = DEFAULT_LEVEL) {
     return;
   }
 
-  const scene = getScene();
-  const camera = scene?.camera;
+  const viewer = getViewer();
+  const camera = viewer?.camera;
   if (!camera) {
     setStatus('FOCUS ERROR // SCENE NOT READY', 'warn');
     return;
@@ -127,7 +137,12 @@ async function applyFocus(levelId = DEFAULT_LEVEL) {
 
   const level = FOCUS_LEVELS.find((item) => item.id === levelId) || FOCUS_LEVELS[2];
   const range = getRange(entity, level.id);
-  const sphere = new Cesium.BoundingSphere(position, Math.max(1_000, Math.min(25_000, range * 0.02)));
+
+  // Mirror the original GEV camera policy: frame the target with a real
+  // BoundingSphere, preserve heading, use a target-class pitch, and ease the
+  // transition with Cesium's cubic in/out camera motion.
+  const sphereRadius = Math.max(1_000, Math.min(25_000, range * 0.02));
+  const sphere = new Cesium.BoundingSphere(position, sphereRadius);
 
   focused = true;
   currentLevel = level.id;
@@ -137,20 +152,23 @@ async function applyFocus(levelId = DEFAULT_LEVEL) {
 
   try {
     camera.cancelFlight?.();
-    // Focus is a camera mode, not tracking. If TRACK was active, release the
-    // trackedEntity first so Cesium does not fight the focus camera flight.
-    const viewer = camera?.__gevViewer || window.__gevViewer;
-    if (viewer?.trackedEntity) viewer.trackedEntity = undefined;
+    // Focus owns the camera transfer. Release Cesium tracking first so the
+    // follow-camera cannot fight the explicit focus flight.
+    if (viewer.trackedEntity) viewer.trackedEntity = undefined;
 
-    await camera.flyToBoundingSphere(sphere, {
-      duration: 1.15,
+    const completed = await camera.flyToBoundingSphere(sphere, {
+      duration: FOCUS_DURATION_SEC,
       offset: new Cesium.HeadingPitchRange(
-        camera.heading,
-        Cesium.Math.clamp(camera.pitch, Cesium.Math.toRadians(-70), Cesium.Math.toRadians(-10)),
+        Number.isFinite(camera.heading) ? camera.heading : 0,
+        getFocusPitch(entity),
         range,
       ),
+      easingFunction: Cesium.EasingFunction.CUBIC_IN_OUT,
     });
-    setStatus(`FOCUS LOCK // ${level.label} // ${entity.gevMeta?.type || 'TARGET'}`, 'ok');
+
+    if (completed !== false) {
+      setStatus(`FOCUS LOCK // ${level.label} // ${entity.gevMeta?.type || 'TARGET'}`, 'ok');
+    }
   } catch (error) {
     console.warn('[GEV] Focus navigation failed', error);
     setStatus('FOCUS ERROR // FLIGHT FAILED', 'warn');
