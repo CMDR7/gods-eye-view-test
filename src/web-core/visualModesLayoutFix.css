@@ -1,0 +1,22 @@
+/* Web Core visual panel layout correction: keep the visual controls in their own viewport region. */
+.visualPanel {
+  position: fixed !important;
+  top: calc(max(14px, env(safe-area-inset-top)) + 98px) !important;
+  left: max(14px, env(safe-area-inset-left)) !important;
+  right: auto !important;
+  transform: none !important;
+  z-index: 25 !important;
+  box-sizing: border-box !important;
+  width: min(300px, calc(100vw - 28px)) !important;
+  max-height: calc(100vh - max(112px, calc(112px + env(safe-area-inset-top))) - 14px) !important;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+@media (max-width: 560px) {
+  .visualPanel {
+    top: calc(max(14px, env(safe-area-inset-top)) + 98px) !important;
+    left: max(14px, env(safe-area-inset-left)) !important;
+    width: min(300px, calc(100vw - 28px)) !important;
+  }
+}
