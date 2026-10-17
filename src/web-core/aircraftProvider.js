@@ -128,27 +128,29 @@ export async function fetchAircraftSnapshot(latitude, longitude, radiusNm = 250)
 
   const observedAt = new Date().toISOString();
   const path = `/point/${lat.toFixed(4)}/${lon.toFixed(4)}/${radius}`;
-  let payload;
-  let provider = 'ADSB.LOL';
+  const providers = [
+    ['ADSB.LOL', `${ADSB_API_BASE}${path}`],
+    ['AIRPLANES.LIVE', `${AIRPLANES_LIVE_API_BASE}${path}`],
+  ];
+  let lastError = null;
 
-  try {
-    payload = await requestAircraftPayload(`${ADSB_API_BASE}${path}`);
-  } catch (primaryError) {
-    console.warn('[GEV] ADSB.LOL aircraft request failed; trying Airplanes.live', primaryError);
-    payload = await requestAircraftPayload(`${AIRPLANES_LIVE_API_BASE}${path}`);
-    provider = 'AIRPLANES.LIVE';
+  for (const [provider, url] of providers) {
+    try {
+      const payload = await requestAircraftPayload(url);
+      const aircraft = (payload?.ac ?? [])
+        .map((raw) => normalizeAircraft(raw, observedAt))
+        .filter((item) => Number.isFinite(item.position.latitude) && Number.isFinite(item.position.longitude));
+
+      // An empty live feed is not a provider failure, but do try the second
+      // public feed before declaring the layer empty.
+      if (aircraft.length > 0 || provider === providers[providers.length - 1][0]) {
+        return { observedAt, latitude: lat, longitude: lon, radiusNm: radius, provider, aircraft };
+      }
+    } catch (error) {
+      lastError = error;
+      console.warn(`[GEV] ${provider} aircraft request failed`, error);
+    }
   }
 
-  const aircraft = (payload?.ac ?? [])
-    .map((raw) => normalizeAircraft(raw, observedAt))
-    .filter((item) => Number.isFinite(item.position.latitude) && Number.isFinite(item.position.longitude));
-
-  return {
-    observedAt,
-    latitude: lat,
-    longitude: lon,
-    radiusNm: radius,
-    provider,
-    aircraft,
-  };
+  throw lastError || new Error('AIRCRAFT PROVIDERS UNAVAILABLE');
 }
