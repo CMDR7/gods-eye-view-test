@@ -86,7 +86,7 @@ void main() {
 
   // CRT: normal imagery first, with only subtle phosphor, scanline and edge characteristics.
   if (mode > 2.5) {
-    float lifted = clamp((rgb - 0.5) * 1.035 + 0.5, 0.0, 1.0);
+    vec3 lifted = clamp((rgb - 0.5) * 1.035 + 0.5, 0.0, 1.0);
     float scan = 0.988 + 0.012 * sin(uv.y * 1100.0 + time * 1.8);
     float vignette = 1.0 - 0.035 * smoothstep(0.48, 0.82, distance(uv, vec2(0.5)));
     rgb = lifted * scan * vignette;
