@@ -41,17 +41,31 @@ function getTargetKey() {
 function findSelectedEntity() {
   const key = getTargetKey();
   if (!key) return null;
+
   const [type, ...idParts] = key.split(':');
   const id = idParts.join(':');
   const scene = getScene();
   if (!scene) return null;
 
-  for (const dataSource of scene.dataSources?.values || []) {
-    for (const entity of dataSource.entities?.values || []) {
-      const meta = entity?.gevMeta;
-      if (meta?.type === type && String(meta.id) === id) return entity;
+  // Use GEV's authoritative layer registry rather than relying only on
+  // Cesium's aggregate DataSourceCollection. Satellites are owned by the
+  // Web Core layer registry and their inspection panel resolves to the same
+  // Entity instance held by that layer.
+  const layerRegistry = scene.__gevWebCoreLayers;
+  const dataSources = layerRegistry instanceof Map
+    ? Array.from(layerRegistry.values()).map((layer) => layer?.dataSource).filter(Boolean)
+    : Array.from(scene.dataSources?.values || []);
+
+  for (const dataSource of dataSources) {
+    const entity = dataSource.entities?.getById?.(id);
+    if (entity?.gevMeta && entity.gevMeta.type === type && String(entity.gevMeta.id) === id) return entity;
+
+    for (const candidate of dataSource.entities?.values || []) {
+      const meta = candidate?.gevMeta;
+      if (meta?.type === type && String(meta.id) === id) return candidate;
     }
   }
+
   return null;
 }
 
@@ -123,6 +137,11 @@ async function applyFocus(levelId = DEFAULT_LEVEL) {
 
   try {
     camera.cancelFlight?.();
+    // Focus is a camera mode, not tracking. If TRACK was active, release the
+    // trackedEntity first so Cesium does not fight the focus camera flight.
+    const viewer = camera?.__gevViewer || window.__gevViewer;
+    if (viewer?.trackedEntity) viewer.trackedEntity = undefined;
+
     await camera.flyToBoundingSphere(sphere, {
       duration: 1.15,
       offset: new Cesium.HeadingPitchRange(
