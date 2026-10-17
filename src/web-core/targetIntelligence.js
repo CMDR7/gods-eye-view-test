@@ -43,10 +43,47 @@ async function fetchJson(url) {
   return response.json();
 }
 
+function normalizedAircraftDetails(hex) {
+  const snapshot = window.__gevAircraftSnapshot;
+  const aircraft = snapshot?.aircraft?.find((item) => String(item.identity?.icaoHex || '').toUpperCase() === String(hex || '').toUpperCase());
+  if (!aircraft) return null;
+
+  const speed = aircraft.motion?.groundSpeedKnots;
+  const track = aircraft.motion?.trackDeg;
+  const verticalRate = aircraft.motion?.verticalRateFeetPerMinute;
+  const altitude = aircraft.position?.altitudeBarometricM;
+  const geometricAltitude = aircraft.position?.altitudeGeometricM;
+
+  return {
+    callsign: aircraft.identity?.callsign || '—',
+    hex: aircraft.identity?.icaoHex || hex || '—',
+    registration: aircraft.identity?.registration || '—',
+    type: aircraft.identity?.typeCode || '—',
+    typeDescription: aircraft.identity?.typeDescription || '—',
+    squawk: aircraft.transponder?.squawk || '—',
+    category: aircraft.identity?.category || '—',
+    speed: Number.isFinite(Number(speed)) ? `${formatNumber(speed, 0)} KT` : '—',
+    track: Number.isFinite(Number(track)) ? `${formatNumber(track, 1)}°` : '—',
+    verticalRate: Number.isFinite(Number(verticalRate)) ? `${formatNumber(verticalRate, 0)} FT/MIN` : '—',
+    altitude: Number.isFinite(Number(altitude)) ? `${formatNumber(Number(altitude) / 0.3048, 0)} FT` : '—',
+    geometricAltitude: Number.isFinite(Number(geometricAltitude)) ? `${formatNumber(Number(geometricAltitude) / 0.3048, 0)} FT` : '—',
+    source: aircraft.signal?.source || '—',
+    positionAge: Number.isFinite(Number(aircraft.signal?.positionAgeSec)) ? `${formatNumber(aircraft.signal.positionAgeSec, 1)} S` : '—',
+    military: aircraft.flags?.military ? 'YES' : 'NO',
+    pia: aircraft.flags?.pia ? 'YES' : 'NO',
+  };
+}
+
 async function aircraftDetails(hex) {
   const key = `aircraft:${hex}`;
   const cached = cache.get(key);
   if (cached && Date.now() - cached.time < AIRCRAFT_CACHE_TTL_MS) return cached.data;
+
+  const normalized = normalizedAircraftDetails(hex);
+  if (normalized) {
+    cache.set(key, { time: Date.now(), data: normalized });
+    return normalized;
+  }
 
   const payload = await fetchJson(`https://api.adsb.lol/v2/hex/${encodeURIComponent(hex)}`);
   const aircraft = payload?.ac?.[0];
@@ -57,10 +94,18 @@ async function aircraftDetails(hex) {
     hex: aircraft.hex || hex || '—',
     registration: aircraft.r || aircraft.reg || '—',
     type: aircraft.t || '—',
+    typeDescription: aircraft.desc || '—',
     squawk: aircraft.squawk || '—',
     category: aircraft.category || '—',
     speed: Number.isFinite(Number(aircraft.gs)) ? `${formatNumber(aircraft.gs, 0)} KT` : '—',
     track: Number.isFinite(Number(aircraft.track)) ? `${formatNumber(aircraft.track, 1)}°` : '—',
+    verticalRate: Number.isFinite(Number(aircraft.baro_rate ?? aircraft.vert_rate)) ? `${formatNumber(aircraft.baro_rate ?? aircraft.vert_rate, 0)} FT/MIN` : '—',
+    altitude: Number.isFinite(Number(aircraft.alt_baro)) ? `${formatNumber(aircraft.alt_baro, 0)} FT` : '—',
+    geometricAltitude: Number.isFinite(Number(aircraft.alt_geom)) ? `${formatNumber(aircraft.alt_geom, 0)} FT` : '—',
+    source: aircraft.src || aircraft.source || '—',
+    positionAge: Number.isFinite(Number(aircraft.seen_pos)) ? `${formatNumber(aircraft.seen_pos, 1)} S` : '—',
+    military: aircraft.mil ? 'YES' : 'NO',
+    pia: aircraft.pia ? 'YES' : 'NO',
   };
   cache.set(key, { time: Date.now(), data });
   return data;
@@ -148,11 +193,11 @@ async function enrichTarget(targetKey) {
         { label: 'CALLSIGN', value: data.callsign },
         { label: 'ICAO HEX', value: data.hex },
         { label: 'REGISTRATION', value: data.registration },
-        { label: 'TYPE', value: data.type },
-        { label: 'SQUAWK', value: data.squawk },
-        { label: 'CATEGORY', value: data.category },
+        { label: 'TYPE', value: data.typeDescription !== '—' ? `${data.type} // ${data.typeDescription}` : data.type },
         { label: 'GROUND SPEED', value: data.speed },
         { label: 'TRACK', value: data.track },
+        { label: 'VERT RATE', value: data.verticalRate },
+        { label: 'POSITION AGE', value: data.positionAge },
       ]);
     } else if (type === 'SATELLITE') {
       const data = await satelliteDetails(id);
