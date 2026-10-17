@@ -146,6 +146,7 @@ function install() {
   $('ionSettings')?.addEventListener('click', () => showPanel('ionPanel'));
   $('ionClose')?.addEventListener('click', () => hidePanel('ionPanel'));
   $('targetClose')?.addEventListener('click', () => hidePanel('targetPanel'));
+  $('targetFly')?.addEventListener('click', () => hidePanel('targetPanel'));
   $('visualSettings')?.addEventListener('click', () => {
     closeCommandPanelForVisuals();
     void openVisualPanel();
