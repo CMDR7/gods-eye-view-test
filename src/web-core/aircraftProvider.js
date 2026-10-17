@@ -22,6 +22,19 @@ function booleanFlag(value) {
   return false;
 }
 
+function getRelayBase() {
+  const meta = document.querySelector('meta[name="gev-aircraft-relay"]');
+  const value = meta?.content?.trim();
+  if (!value) return '';
+  try {
+    const url = new URL(value, window.location.href);
+    if (url.protocol !== 'https:' && url.origin !== window.location.origin) return '';
+    return url.href.replace(/\/$/, '');
+  } catch {
+    return '';
+  }
+}
+
 export function normalizeAircraft(raw, observedAt = new Date().toISOString()) {
   const latitude = finiteNumber(raw?.lat);
   const longitude = finiteNumber(raw?.lon);
@@ -119,6 +132,13 @@ async function requestAircraftPayload(url) {
   return response.json();
 }
 
+function normalizePayload(payload, provider, observedAt, latitude, longitude, radius) {
+  const aircraft = (payload?.ac ?? [])
+    .map((raw) => normalizeAircraft(raw, observedAt))
+    .filter((item) => Number.isFinite(item.position.latitude) && Number.isFinite(item.position.longitude));
+  return { observedAt, latitude, longitude, radiusNm: radius, provider, aircraft };
+}
+
 export async function fetchAircraftSnapshot(latitude, longitude, radiusNm = 250) {
   const lat = Number(latitude);
   const lon = Number(longitude);
@@ -128,29 +148,28 @@ export async function fetchAircraftSnapshot(latitude, longitude, radiusNm = 250)
 
   const observedAt = new Date().toISOString();
   const path = `/point/${lat.toFixed(4)}/${lon.toFixed(4)}/${radius}`;
-  const providers = [
+  const relayBase = getRelayBase();
+  const providers = [];
+
+  if (relayBase) providers.push(['GEV RELAY', `${relayBase}/aircraft?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&radius=${radius}`]);
+  providers.push(
     ['ADSB.LOL', `${ADSB_API_BASE}${path}`],
     ['AIRPLANES.LIVE', `${AIRPLANES_LIVE_API_BASE}${path}`],
-  ];
+  );
+
   let lastError = null;
 
   for (const [provider, url] of providers) {
     try {
       const payload = await requestAircraftPayload(url);
-      const aircraft = (payload?.ac ?? [])
-        .map((raw) => normalizeAircraft(raw, observedAt))
-        .filter((item) => Number.isFinite(item.position.latitude) && Number.isFinite(item.position.longitude));
-
-      // An empty live feed is not a provider failure, but do try the second
-      // public feed before declaring the layer empty.
-      if (aircraft.length > 0 || provider === providers[providers.length - 1][0]) {
-        return { observedAt, latitude: lat, longitude: lon, radiusNm: radius, provider, aircraft };
-      }
+      const result = normalizePayload(payload, payload?.provider || provider, observedAt, lat, lon, radius);
+      if (result.aircraft.length > 0 || provider === providers[providers.length - 1][0]) return result;
     } catch (error) {
       lastError = error;
       console.warn(`[GEV] ${provider} aircraft request failed`, error);
     }
   }
 
-  throw lastError || new Error('AIRCRAFT PROVIDERS UNAVAILABLE');
+  if (relayBase) throw lastError || new Error('AIRCRAFT RELAY UNAVAILABLE');
+  throw new Error('AIRCRAFT RELAY NOT CONFIGURED // DIRECT PROVIDERS ARE BROWSER-BLOCKED');
 }
