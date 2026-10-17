@@ -27,10 +27,37 @@ function buildFallbackInput(input) {
   return typeof input === 'string' ? url.toString() : new Request(url.toString(), input);
 }
 
+async function responseAircraftCount(response) {
+  try {
+    const payload = await response.clone().json();
+    return Array.isArray(payload?.ac) ? payload.ac.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
 async function fetchAircraft(input, init) {
   try {
     const response = await originalFetch(input, init);
-    if (response.ok) return { response, provider: getUrl(response.url || input)?.origin === AIRPLANES_LIVE_ORIGIN ? 'AIRPLANES.LIVE' : 'ADSB.LOL' };
+    if (response.ok) {
+      const count = await responseAircraftCount(response);
+      if (count > 0) {
+        return { response, provider: 'ADSB.LOL' };
+      }
+
+      // A successful empty response is still a usable HTTP response, but for
+      // a live aircraft layer it is worth checking the browser-safe mirror
+      // before declaring the layer empty. This also makes provider failure
+      // transparent to the rest of the GEV layer pipeline.
+      const fallback = buildFallbackInput(input);
+      if (fallback) {
+        const fallbackResponse = await originalFetch(fallback, init);
+        if (fallbackResponse.ok && await responseAircraftCount(fallbackResponse) > 0) {
+          return { response: fallbackResponse, provider: 'AIRPLANES.LIVE' };
+        }
+      }
+      return { response, provider: 'ADSB.LOL' };
+    }
 
     const fallback = buildFallbackInput(input);
     if (!fallback) return { response, provider: 'ADSB.LOL' };
