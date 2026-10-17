@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import './visualModes.css';
+import './visualModesLayoutFix.css';
 
 const STORAGE_KEY = 'gev.webCore.visualMode.v1';
 const HUD_STORAGE_KEY = 'gev.webCore.hudLayout.v1';
