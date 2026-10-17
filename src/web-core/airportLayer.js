@@ -109,11 +109,15 @@ function syncPointVisuals(scene, layer) {
   const collection = scene[POINT_COLLECTION_KEY];
   if (!collection) return;
   const profile = getHudProfile();
+  const occluder = scene.__gevAirportOccluder || (scene.__gevAirportOccluder = new Cesium.EllipsoidalOccluder(scene.globe.ellipsoid));
+  occluder.cameraPosition = scene.camera.positionWC;
+
   for (const entity of layer.dataSource.entities.values) {
     const point = entity.__gevAirportPoint;
     if (!point) continue;
     const selected = document.getElementById('targetPanel')?.hidden === false && document.getElementById('targetId')?.textContent?.trim() === String(entity.gevMeta?.id);
-    point.show = layer.enabled;
+    const horizonVisible = occluder.isPointVisible(point.position);
+    point.show = layer.enabled && horizonVisible;
     point.pixelSize = selected ? Math.max(profile.size + 4, 10) : profile.size;
     point.color = selected ? Cesium.Color.WHITE : Cesium.Color.ORANGE.withAlpha(profile.alpha);
     point.outlineColor = selected ? Cesium.Color.CYAN : Cesium.Color.BLACK;
@@ -128,6 +132,7 @@ function installHudSync(scene, layer) {
   hudObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-gev-hud'] });
   const panel = document.getElementById('targetPanel');
   if (panel) hudObserver.observe(panel, { attributes: true, childList: true, subtree: true, characterData: true });
+  scene.camera.changed.addEventListener(() => syncPointVisuals(scene, layer));
 }
 
 function createLayer(scene) {
