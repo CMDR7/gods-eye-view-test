@@ -1,4 +1,5 @@
 const ADSB_API_BASE = 'https://api.adsb.lol/v2';
+const AIRPLANES_LIVE_API_BASE = 'https://api.airplanes.live/v2';
 const FEET_TO_METERS = 0.3048;
 const KNOTS_TO_MPS = 0.5144444444;
 const FEET_PER_MIN_TO_MPS = FEET_TO_METERS / 60;
@@ -19,12 +20,6 @@ function booleanFlag(value) {
   if (typeof value === 'number') return value !== 0;
   if (typeof value === 'string') return /^(true|1|yes|military|pia|ladd)$/i.test(value.trim());
   return false;
-}
-
-function normalizeTimestamp(value, fallback) {
-  const seconds = finiteNumber(value);
-  if (seconds !== null && seconds > 0) return new Date(seconds * 1000).toISOString();
-  return fallback;
 }
 
 export function normalizeAircraft(raw, observedAt = new Date().toISOString()) {
@@ -64,7 +59,7 @@ export function normalizeAircraft(raw, observedAt = new Date().toISOString()) {
       groundSpeedKnots,
       trackDeg: track,
       verticalRateMps: verticalRateFeetPerMinute !== null ? verticalRateFeetPerMinute * FEET_PER_MIN_TO_MPS : null,
-      verticalRateFeetPerMinute: verticalRateFeetPerMinute,
+      verticalRateFeetPerMinute,
       trueHeadingDeg: finiteNumber(raw?.true_heading ?? raw?.heading),
       magneticHeadingDeg: finiteNumber(raw?.mag_heading),
       trackRateDegPerSecond: finiteNumber(raw?.track_rate),
@@ -115,6 +110,15 @@ export function normalizeAircraft(raw, observedAt = new Date().toISOString()) {
   };
 }
 
+async function requestAircraftPayload(url) {
+  const response = await fetch(url, {
+    mode: 'cors',
+    headers: { Accept: 'application/json' },
+  });
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  return response.json();
+}
+
 export async function fetchAircraftSnapshot(latitude, longitude, radiusNm = 250) {
   const lat = Number(latitude);
   const lon = Number(longitude);
@@ -123,13 +127,18 @@ export async function fetchAircraftSnapshot(latitude, longitude, radiusNm = 250)
   if (!Number.isFinite(lon) || lon < -180 || lon > 180) throw new Error('INVALID AIRCRAFT QUERY LONGITUDE');
 
   const observedAt = new Date().toISOString();
-  const response = await fetch(`${ADSB_API_BASE}/point/${lat.toFixed(4)}/${lon.toFixed(4)}/${radius}`, {
-    mode: 'cors',
-    headers: { Accept: 'application/json' },
-  });
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  const path = `/point/${lat.toFixed(4)}/${lon.toFixed(4)}/${radius}`;
+  let payload;
+  let provider = 'ADSB.LOL';
 
-  const payload = await response.json();
+  try {
+    payload = await requestAircraftPayload(`${ADSB_API_BASE}${path}`);
+  } catch (primaryError) {
+    console.warn('[GEV] ADSB.LOL aircraft request failed; trying Airplanes.live', primaryError);
+    payload = await requestAircraftPayload(`${AIRPLANES_LIVE_API_BASE}${path}`);
+    provider = 'AIRPLANES.LIVE';
+  }
+
   const aircraft = (payload?.ac ?? [])
     .map((raw) => normalizeAircraft(raw, observedAt))
     .filter((item) => Number.isFinite(item.position.latitude) && Number.isFinite(item.position.longitude));
@@ -139,6 +148,7 @@ export async function fetchAircraftSnapshot(latitude, longitude, radiusNm = 250)
     latitude: lat,
     longitude: lon,
     radiusNm: radius,
+    provider,
     aircraft,
   };
 }
