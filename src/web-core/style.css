@@ -4,7 +4,7 @@ body { background: #05070a; }
 #cesiumContainer { position: fixed; inset: 0; }
 #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
 #brand { position: absolute; top: 14px; left: 14px; padding: 10px 13px; border: 1px solid rgba(0,220,255,.38); border-radius: 5px; background: rgba(3,8,12,.78); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); font: 500 13px/1 'Orbitron', sans-serif; letter-spacing: .16em; color: var(--gev-text); box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 0 16px rgba(0,220,255,.08); }
-#gevTimeHud { position: absolute; left: 50%; bottom: 54px; z-index: 12; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; gap: 10px; box-sizing: border-box; max-width: calc(100vw - 28px); padding: 7px 11px; border: 1px solid rgba(90,220,255,.38); border-radius: 4px; background: rgba(4,8,12,.86); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); font: 600 10px/1 'Orbitron', sans-serif; letter-spacing: .12em; color: rgba(190,235,255,.9); text-shadow: 0 0 7px rgba(0,220,255,.18); white-space: nowrap; box-shadow: 0 0 14px rgba(0,220,255,.08), inset 0 1px 0 rgba(180,240,255,.08); }
+#gevTimeHud { position: absolute; left: 14px; top: 57px; bottom: auto; z-index: 12; transform: none; display: flex; align-items: center; justify-content: center; gap: 10px; box-sizing: border-box; max-width: calc(100vw - 28px); padding: 7px 11px; border: 1px solid rgba(90,220,255,.38); border-radius: 4px; background: rgba(4,8,12,.86); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); font: 600 10px/1 'Orbitron', sans-serif; letter-spacing: .12em; color: rgba(190,235,255,.9); text-shadow: 0 0 7px rgba(0,220,255,.18); white-space: nowrap; box-shadow: 0 0 14px rgba(0,220,255,.08), inset 0 1px 0 rgba(180,240,255,.08); }
 #gevTimeHud .gevTimeMode { color: rgba(116,234,255,.9); }
 #gevTimeHud .gevTimeValue { color: rgba(223,250,255,.96); font-variant-numeric: tabular-nums; }
 #gevTimeHud .gevTimeRate { color: rgba(159,178,189,.86); font-size: 9px; }
@@ -87,6 +87,6 @@ button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
 /* WEBSTACK-X: browser/PWA shell adaptation only. GEV scene/data logic is untouched. */
 #brand { top: max(14px, env(safe-area-inset-top)); left: max(14px, env(safe-area-inset-left)); }
 .menuToggle { top: max(14px, env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right)); }
-#gevTimeHud { bottom: max(54px, calc(54px + env(safe-area-inset-bottom))); }
+#gevTimeHud { left: max(14px, env(safe-area-inset-left)); top: calc(max(14px, env(safe-area-inset-top)) + 43px); bottom: auto; transform: none; }
 #status { left: max(14px, env(safe-area-inset-left)); bottom: max(58px, calc(58px + env(safe-area-inset-bottom))); }
 .commandPanel { padding-top: max(18px, calc(18px + env(safe-area-inset-top))); padding-right: max(18px, calc(18px + env(safe-area-inset-right))); padding-bottom: max(18px, calc(18px + env(safe-area-inset-bottom))); padding-left: max(18px, calc(18px + env(safe-area-inset-left))); }
