@@ -2,19 +2,49 @@ import { normalizeAircraft } from './aircraftProvider.js';
 import { attachAircraftMotion } from './aircraftMotion.js';
 
 const ADSB_POINT_PATH = '/v2/point/';
+const ADSB_LOL_ORIGIN = 'https://api.adsb.lol';
+const AIRPLANES_LIVE_ORIGIN = 'https://api.airplanes.live';
 const originalFetch = window.fetch.bind(window);
 const normalizedByIcao = new Map();
 
-function isAircraftPointRequest(input) {
+function getUrl(input) {
   try {
-    const url = new URL(typeof input === 'string' ? input : input?.url, window.location.href);
-    return url.origin === 'https://api.adsb.lol' && url.pathname.includes(ADSB_POINT_PATH);
+    return new URL(typeof input === 'string' ? input : input?.url, window.location.href);
   } catch {
-    return false;
+    return null;
   }
 }
 
-function cacheSnapshot(payload, observedAt) {
+function isAircraftPointRequest(input) {
+  const url = getUrl(input);
+  return Boolean(url && (url.origin === ADSB_LOL_ORIGIN || url.origin === AIRPLANES_LIVE_ORIGIN) && url.pathname.includes(ADSB_POINT_PATH));
+}
+
+function buildFallbackInput(input) {
+  const url = getUrl(input);
+  if (!url || url.origin !== ADSB_LOL_ORIGIN || !url.pathname.includes(ADSB_POINT_PATH)) return null;
+  url.origin = AIRPLANES_LIVE_ORIGIN;
+  return typeof input === 'string' ? url.toString() : new Request(url.toString(), input);
+}
+
+async function fetchAircraft(input, init) {
+  try {
+    const response = await originalFetch(input, init);
+    if (response.ok) return { response, provider: getUrl(response.url || input)?.origin === AIRPLANES_LIVE_ORIGIN ? 'AIRPLANES.LIVE' : 'ADSB.LOL' };
+
+    const fallback = buildFallbackInput(input);
+    if (!fallback) return { response, provider: 'ADSB.LOL' };
+    const fallbackResponse = await originalFetch(fallback, init);
+    return { response: fallbackResponse, provider: 'AIRPLANES.LIVE' };
+  } catch (error) {
+    const fallback = buildFallbackInput(input);
+    if (!fallback) throw error;
+    const fallbackResponse = await originalFetch(fallback, init);
+    return { response: fallbackResponse, provider: 'AIRPLANES.LIVE' };
+  }
+}
+
+function cacheSnapshot(payload, observedAt, provider) {
   const aircraft = (payload?.ac ?? [])
     .map((raw) => normalizeAircraft(raw, observedAt))
     .filter((item) => item.identity.icaoHex);
@@ -22,16 +52,20 @@ function cacheSnapshot(payload, observedAt) {
   normalizedByIcao.clear();
   for (const item of aircraft) normalizedByIcao.set(item.identity.icaoHex.toUpperCase(), item);
 
-  window.__gevAircraftSnapshot = { observedAt, aircraft };
+  window.__gevAircraftProvider = provider;
+  window.__gevAircraftSnapshot = { observedAt, provider, aircraft };
 }
 
 window.fetch = async (...args) => {
-  const response = await originalFetch(...args);
-  if (!isAircraftPointRequest(args[0]) || !response.ok) return response;
+  const input = args[0];
+  if (!isAircraftPointRequest(input)) return originalFetch(...args);
+
+  const { response, provider } = await fetchAircraft(input, args[1]);
+  if (!response.ok) return response;
 
   try {
     const payload = await response.clone().json();
-    cacheSnapshot(payload, new Date().toISOString());
+    cacheSnapshot(payload, new Date().toISOString(), provider);
     enrichCurrentLayer();
   } catch (error) {
     console.warn('[GEV] Aircraft normalization bridge skipped', error);
@@ -56,6 +90,7 @@ function enrichEntity(entity) {
   entity.gevMeta.transponder = aircraft.transponder;
   entity.gevMeta.environment = aircraft.environment;
   entity.gevMeta.updated = aircraft.sourceRecord.updatedAt;
+  entity.gevMeta.source = window.__gevAircraftProvider || entity.gevMeta.source;
   entity.gevMeta.altitude = aircraft.position.altitudeBarometricM ?? aircraft.position.altitudeGeometricM ?? entity.gevMeta.altitude;
 
   attachAircraftMotion(entity);
