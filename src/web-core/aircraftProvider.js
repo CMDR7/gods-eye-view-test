@@ -35,21 +35,23 @@ function getRelayBase() {
   }
 }
 
-export function normalizeAircraft(raw, observedAt = new Date().toISOString()) {
+export function normalizeAircraft(raw, observedAt = new Date().toISOString(), classification = 'civilian') {
   const latitude = finiteNumber(raw?.lat);
   const longitude = finiteNumber(raw?.lon);
   const barometricFeet = finiteNumber(raw?.alt_baro);
   const geometricFeet = finiteNumber(raw?.alt_geom);
   const groundSpeedKnots = finiteNumber(raw?.gs);
   const verticalRateFeetPerMinute = finiteNumber(raw?.baro_rate ?? raw?.geom_rate ?? raw?.vert_rate);
-  const track = finiteNumber(raw?.track ?? raw?.track_deg);
+  const track = finiteNumber(raw?.track ?? raw?.track_deg ?? raw?.calc_track);
   const seen = finiteNumber(raw?.seen);
   const seenPosition = finiteNumber(raw?.seen_pos);
   const positionEpoch = finiteNumber(raw?.pos_epoch);
   const lastPosition = positionEpoch !== null ? new Date(positionEpoch * 1000).toISOString() : observedAt;
+  const military = classification === 'military' || booleanFlag(raw?.mil) || booleanFlag(raw?.military);
 
   return {
     type: 'AIRCRAFT',
+    classification: military ? 'military' : 'civilian',
     identity: {
       icaoHex: cleanString(raw?.hex),
       callsign: cleanString(raw?.flight),
@@ -100,7 +102,7 @@ export function normalizeAircraft(raw, observedAt = new Date().toISOString()) {
       rcM: finiteNumber(raw?.rc),
     },
     flags: {
-      military: booleanFlag(raw?.mil) || booleanFlag(raw?.military),
+      military,
       pia: booleanFlag(raw?.pia),
       ladd: booleanFlag(raw?.ladd),
     },
@@ -132,44 +134,53 @@ async function requestAircraftPayload(url) {
   return response.json();
 }
 
-function normalizePayload(payload, provider, observedAt, latitude, longitude, radius) {
+function normalizePayload(payload, provider, observedAt, latitude, longitude, radius, classification) {
   const aircraft = (payload?.ac ?? [])
-    .map((raw) => normalizeAircraft(raw, observedAt))
-    .filter((item) => Number.isFinite(item.position.latitude) && Number.isFinite(item.position.longitude));
-  return { observedAt, latitude, longitude, radiusNm: radius, provider, aircraft };
+    .map((raw) => normalizeAircraft(raw, observedAt, classification))
+    .filter((item) => Number.isFinite(item.position.latitude) && Number.isFinite(item.position.longitude))
+    .filter((item) => classification === 'military' || !item.flags.military);
+  return { observedAt, latitude, longitude, radiusNm: radius, provider, classification, aircraft };
 }
 
-export async function fetchAircraftSnapshot(latitude, longitude, radiusNm = 250) {
+export async function fetchAircraftSnapshot(latitude, longitude, radiusNm = 250, classification = 'civilian') {
   const lat = Number(latitude);
   const lon = Number(longitude);
   const radius = Math.min(250, Math.max(1, Number(radiusNm) || 250));
+  const mode = classification === 'military' ? 'military' : 'civilian';
   if (!Number.isFinite(lat) || lat < -90 || lat > 90) throw new Error('INVALID AIRCRAFT QUERY LATITUDE');
   if (!Number.isFinite(lon) || lon < -180 || lon > 180) throw new Error('INVALID AIRCRAFT QUERY LONGITUDE');
 
   const observedAt = new Date().toISOString();
-  const path = `/point/${lat.toFixed(4)}/${lon.toFixed(4)}/${radius}`;
+  const pointPath = `/point/${lat.toFixed(4)}/${lon.toFixed(4)}/${radius}`;
   const relayBase = getRelayBase();
   const providers = [];
 
-  if (relayBase) providers.push(['GEV RELAY', `${relayBase}/aircraft?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&radius=${radius}`]);
-  providers.push(
-    ['ADSB.LOL', `${ADSB_API_BASE}${path}`],
-    ['AIRPLANES.LIVE', `${AIRPLANES_LIVE_API_BASE}${path}`],
-  );
+  if (relayBase) {
+    providers.push(['GEV RELAY', `${relayBase}/aircraft?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&radius=${radius}&mode=${mode}`]);
+  }
+
+  if (mode === 'military') {
+    providers.push(['ADSB.LOL // MILITARY', `${ADSB_API_BASE}/mil`]);
+  } else {
+    providers.push(
+      ['ADSB.LOL', `${ADSB_API_BASE}${pointPath}`],
+      ['AIRPLANES.LIVE', `${AIRPLANES_LIVE_API_BASE}${pointPath}`],
+    );
+  }
 
   let lastError = null;
 
   for (const [provider, url] of providers) {
     try {
       const payload = await requestAircraftPayload(url);
-      const result = normalizePayload(payload, payload?.provider || provider, observedAt, lat, lon, radius);
+      const result = normalizePayload(payload, payload?.provider || provider, observedAt, lat, lon, radius, mode);
       if (result.aircraft.length > 0 || provider === providers[providers.length - 1][0]) return result;
     } catch (error) {
       lastError = error;
-      console.warn(`[GEV] ${provider} aircraft request failed`, error);
+      console.warn(`[GEV] ${provider} ${mode} aircraft request failed`, error);
     }
   }
 
-  if (relayBase) throw lastError || new Error('AIRCRAFT RELAY UNAVAILABLE');
+  if (relayBase) throw lastError || new Error(`AIRCRAFT ${mode.toUpperCase()} RELAY UNAVAILABLE`);
   throw new Error('AIRCRAFT RELAY NOT CONFIGURED // DIRECT PROVIDERS ARE BROWSER-BLOCKED');
 }
