@@ -9,19 +9,49 @@ const COLORS = {
   military: '#ff9f2f',
 };
 
-const glyphUrls = new Map();
+const glyphCanvases = new Map();
 
-function svgDataUrl(color) {
-  const key = color;
-  if (glyphUrls.has(key)) return glyphUrls.get(key);
+function glyphCanvas(color) {
+  if (glyphCanvases.has(color)) return glyphCanvases.get(color);
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${GLYPH_SIZE}" height="${GLYPH_SIZE}" viewBox="0 0 64 64">
-  <path d="M32 4 L43 35 L36 32 L36 56 L28 56 L28 32 L21 35 Z" fill="${color}" fill-opacity="0.96" stroke="#020508" stroke-width="3" stroke-linejoin="round"/>
-  <path d="M32 9 L38 31 L32 28 L26 31 Z" fill="#ffffff" fill-opacity="0.16"/>
-</svg>`;
-  const url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-  glyphUrls.set(key, url);
-  return url;
+  const canvas = document.createElement('canvas');
+  canvas.width = GLYPH_SIZE;
+  canvas.height = GLYPH_SIZE;
+  const context = canvas.getContext('2d');
+  if (!context) return canvas;
+
+  context.clearRect(0, 0, GLYPH_SIZE, GLYPH_SIZE);
+  context.beginPath();
+  context.moveTo(32, 4);
+  context.lineTo(43, 35);
+  context.lineTo(36, 32);
+  context.lineTo(36, 56);
+  context.lineTo(28, 56);
+  context.lineTo(28, 32);
+  context.lineTo(21, 35);
+  context.closePath();
+  context.fillStyle = color;
+  context.globalAlpha = 0.96;
+  context.fill();
+  context.globalAlpha = 1;
+  context.lineWidth = 3;
+  context.strokeStyle = '#020508';
+  context.lineJoin = 'round';
+  context.stroke();
+
+  context.beginPath();
+  context.moveTo(32, 9);
+  context.lineTo(38, 31);
+  context.lineTo(32, 28);
+  context.lineTo(26, 31);
+  context.closePath();
+  context.fillStyle = '#ffffff';
+  context.globalAlpha = 0.16;
+  context.fill();
+  context.globalAlpha = 1;
+
+  glyphCanvases.set(color, canvas);
+  return canvas;
 }
 
 function getAircraftLayers(scene) {
@@ -60,14 +90,15 @@ function patchAircraftEntity(entity) {
   const color = COLORS[classification];
 
   entity.billboard = new Cesium.BillboardGraphics({
-    image: svgDataUrl(color),
+    show: true,
+    image: glyphCanvas(color),
     width: GLYPH_SIZE,
     height: GLYPH_SIZE,
     scale: DEFAULT_SCALE,
     rotation: -Cesium.Math.toRadians(headingFor(entity)),
     verticalOrigin: Cesium.VerticalOrigin.CENTER,
     horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-    disableDepthTestDistance: 0,
+    disableDepthTestDistance: Number.POSITIVE_INFINITY,
     color: Cesium.Color.WHITE,
     scaleByDistance: new Cesium.NearFarScalar(1.5e5, 1.0, 8.0e6, 0.45),
   });
@@ -76,9 +107,11 @@ function patchAircraftEntity(entity) {
   entity.billboard.__gevAircraftClassification = classification;
 
   if (entity.point) {
+    entity.point.show = false;
     entity.point.pixelSize = 2;
     entity.point.outlineWidth = 1;
   }
+  if (entity.label) entity.label.show = false;
 }
 
 function selectedTargetId() {
