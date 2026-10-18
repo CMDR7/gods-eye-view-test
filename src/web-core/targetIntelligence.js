@@ -43,9 +43,20 @@ async function fetchJson(url) {
   return response.json();
 }
 
+function findNormalizedAircraft(hex) {
+  const normalizedHex = String(hex || '').toUpperCase();
+  const snapshots = Object.values(window.__gevAircraftSnapshots || {});
+  if (window.__gevAircraftSnapshot) snapshots.push(window.__gevAircraftSnapshot);
+
+  for (const snapshot of snapshots) {
+    const aircraft = snapshot?.aircraft?.find((item) => String(item.identity?.icaoHex || '').toUpperCase() === normalizedHex);
+    if (aircraft) return aircraft;
+  }
+  return null;
+}
+
 function normalizedAircraftDetails(hex) {
-  const snapshot = window.__gevAircraftSnapshot;
-  const aircraft = snapshot?.aircraft?.find((item) => String(item.identity?.icaoHex || '').toUpperCase() === String(hex || '').toUpperCase());
+  const aircraft = findNormalizedAircraft(hex);
   if (!aircraft) return null;
 
   const speed = aircraft.motion?.groundSpeedKnots;
@@ -190,6 +201,7 @@ async function enrichTarget(targetKey) {
       const data = await aircraftDetails(id);
       if (serial !== requestSerial) return;
       renderDetails([
+        { label: 'CLASS', value: data.military === 'YES' ? 'MILITARY' : 'CIVILIAN' },
         { label: 'CALLSIGN', value: data.callsign },
         { label: 'ICAO HEX', value: data.hex },
         { label: 'REGISTRATION', value: data.registration },
@@ -197,7 +209,6 @@ async function enrichTarget(targetKey) {
         { label: 'GROUND SPEED', value: data.speed },
         { label: 'TRACK', value: data.track },
         { label: 'VERT RATE', value: data.verticalRate },
-        { label: 'POSITION AGE', value: data.positionAge },
       ]);
     } else if (type === 'SATELLITE') {
       const data = await satelliteDetails(id);
