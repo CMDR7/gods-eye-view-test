@@ -175,24 +175,27 @@ function getAircraftQueryPoint() {
   };
 }
 
-async function loadAircraft() {
-  const layer = state.layers.get('aircraft');
-  clearLayer('aircraft');
+async function loadAircraft(classification, layerId) {
+  const layer = state.layers.get(layerId);
+  clearLayer(layerId);
   const query = getAircraftQueryPoint();
-  const snapshot = await fetchAircraftSnapshot(query.latitude, query.longitude, 250);
-  window.__gevAircraftProvider = snapshot.provider;
+  const snapshot = await fetchAircraftSnapshot(query.latitude, query.longitude, 250, classification);
+  window.__gevAircraftSnapshots = window.__gevAircraftSnapshots || {};
+  window.__gevAircraftSnapshots[classification] = snapshot;
   window.__gevAircraftSnapshot = snapshot;
+  window.__gevAircraftProvider = snapshot.provider;
 
+  const color = classification === 'military' ? Cesium.Color.ORANGE : Cesium.Color.CYAN;
   for (const aircraft of snapshot.aircraft) {
     const lon = aircraft.position.longitude;
     const lat = aircraft.position.latitude;
     if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
     const altitude = aircraft.position.altitudeBarometricM ?? aircraft.position.altitudeGeometricM ?? 500;
     const callsign = aircraft.identity.callsign || aircraft.identity.icaoHex || 'AIR';
-    const entity = addPoint(layer, lon, lat, altitude, callsign, Cesium.Color.CYAN, 6, {
+    const entity = addPoint(layer, lon, lat, altitude, callsign, color, 6, {
       type: 'AIRCRAFT', name: callsign, id: aircraft.identity.icaoHex || callsign,
       source: snapshot.provider, updated: snapshot.observedAt, altitude,
-      callsign, hex: aircraft.identity.icaoHex || 'UNKNOWN',
+      classification, callsign, hex: aircraft.identity.icaoHex || 'UNKNOWN',
       squawk: aircraft.transponder.squawk || '—',
       registration: aircraft.identity.registration || '—',
       category: aircraft.identity.category || '—',
@@ -303,7 +306,7 @@ function updateTargetPanel(entity) {
   const lon = cartographic ? Cesium.Math.toDegrees(cartographic.longitude) : Number.NaN;
   const lat = cartographic ? Cesium.Math.toDegrees(cartographic.latitude) : Number.NaN;
   const altitude = Number.isFinite(Number(meta.altitude)) ? Number(meta.altitude) : cartographic?.height;
-  setTargetField('targetType', meta.type || 'UNKNOWN'); setTargetField('targetName', meta.name || 'UNKNOWN'); setTargetField('targetId', meta.id || entity?.id || '—');
+  setTargetField('targetType', meta.type === 'AIRCRAFT' ? `${meta.classification === 'military' ? 'MILITARY' : 'CIVILIAN'} AIRCRAFT` : meta.type || 'UNKNOWN'); setTargetField('targetName', meta.name || 'UNKNOWN'); setTargetField('targetId', meta.id || entity?.id || '—');
   setTargetField('targetPosition', `${formatCoordinate(lat, 'N', 'S')} / ${formatCoordinate(lon, 'E', 'W')}`); setTargetField('targetAltitude', `${formatNumber(altitude, 0)} M`); setTargetField('targetSource', meta.source || '—'); setTargetField('targetUpdated', formatUpdated(meta.updated));
   const detail = $('targetDetail');
   if (meta.type === 'AIRCRAFT') { detail.hidden = false; setTargetField('targetDetailLabel', 'CALLSIGN'); setTargetField('targetDetailValue', meta.callsign || meta.name || '—'); }
@@ -371,10 +374,21 @@ function addCoordinateNavigation() {
   $('coordinateCopy')?.addEventListener('click', () => { const value = `${$('coordinateLat').value}, ${$('coordinateLon').value}`; navigator.clipboard?.writeText(value).then(() => setStatus('COORDINATES COPIED', 'ok')).catch(() => setStatus('CLIPBOARD UNAVAILABLE', 'warn')); });
 }
 function addLayerControls() {
-  const definitions = [['earthquakes', 'EARTHQUAKES', Cesium.Color.YELLOW, loadEarthquakes, REFRESH_MS], ['aircraft', 'AIRCRAFT', Cesium.Color.CYAN, loadAircraft, REFRESH_MS], ['satellites', 'SATELLITES', Cesium.Color.LIME, loadSatellites, SATELLITE_REFRESH_MS]];
+  const definitions = [
+    ['earthquakes', 'EARTHQUAKES', Cesium.Color.YELLOW, loadEarthquakes, REFRESH_MS],
+    ['civilianAircraft', 'CIVILIAN AIRCRAFT', Cesium.Color.CYAN, () => loadAircraft('civilian', 'civilianAircraft'), REFRESH_MS],
+    ['militaryAircraft', 'MILITARY AIRCRAFT', Cesium.Color.ORANGE, () => loadAircraft('military', 'militaryAircraft'), REFRESH_MS],
+    ['satellites', 'SATELLITES', Cesium.Color.LIME, loadSatellites, SATELLITE_REFRESH_MS],
+  ];
   for (const [id, name, color, loader, interval] of definitions) {
     addLayer(id, name, color);
-    document.querySelector(`[data-layer="${id}"]`)?.addEventListener('click', () => { const layer = state.layers.get(id); const enabled = !layer.enabled; setLayerEnabled(id, enabled); if (enabled) schedule(id, loader, interval); else clearLayer(id); });
+    document.querySelector(`[data-layer="${id}"]`)?.addEventListener('click', () => {
+      const layer = state.layers.get(id);
+      const enabled = !layer.enabled;
+      setLayerEnabled(id, enabled);
+      if (enabled) schedule(id, loader, interval);
+      else clearLayer(id);
+    });
   }
 }
 async function initialize() {
