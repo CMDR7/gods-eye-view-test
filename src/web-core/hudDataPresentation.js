@@ -29,7 +29,7 @@ const DEFAULT_PROFILE = HUD_PRESENTATION.tactical;
 const INSTALLED_KEY = '__gevHudDataPresentationInstalled';
 
 function getScene() {
-  return document.querySelector('#globe canvas')?.__gevScene || null;
+  return window.__gevScene || window.__gevViewer?.scene || null;
 }
 
 function getProfile() {
