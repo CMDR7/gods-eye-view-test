@@ -1,3 +1,5 @@
+import * as Cesium from 'cesium';
+
 const STYLE_ID = 'gev-aircraft-button-colors';
 const CIVILIAN = '#00eaff';
 const MILITARY = '#ff9f2f';
