@@ -122,3 +122,25 @@ export function installAircraftPresentation(scene) {
 
   return true;
 }
+
+function getScene() {
+  return window.__gevScene || window.__gevViewer?.scene || null;
+}
+
+function bootAircraftPresentation(attempt = 0) {
+  const scene = getScene();
+  if (!scene?.__gevWebCoreLayers || !(scene.__gevWebCoreLayers instanceof Map) || !scene.__gevWebCoreLayers.size) {
+    if (attempt < 600) requestAnimationFrame(() => bootAircraftPresentation(attempt + 1));
+    return;
+  }
+
+  if (!installAircraftPresentation(scene) && attempt < 600) {
+    requestAnimationFrame(() => bootAircraftPresentation(attempt + 1));
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => bootAircraftPresentation(), { once: true });
+} else {
+  bootAircraftPresentation();
+}
