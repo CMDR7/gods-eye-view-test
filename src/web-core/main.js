@@ -392,8 +392,10 @@ function addLayerControls() {
   }
 }
 async function initialize() {
-  const viewer = new Cesium.Viewer('globe', { animation: false, timeline: false, geocoder: false, homeButton: false, sceneModePicker: false, navigationHelpButton: false, fullscreenButton: false, selectionIndicator: false, infoBox: false, baseLayerPicker: false, terrainProvider: undefined });
+  const viewer = new Cesium.Viewer('globe', { animation: false, timeline: false, geocoder: false, homeButton: false, sceneModePicker: false, navigationHelpButton: false, fullscreenButton: false, infoBox: false, baseLayerPicker: false, terrainProvider: undefined });
   state.viewer = viewer;
+  window.__gevViewer = viewer;
+  window.__gevScene = viewer.scene;
   viewer.scene.__gevWebCoreLayers = state.layers;
   viewer.scene.globe.depthTestAgainstTerrain = false;
   viewer.scene.requestRenderMode = false;
