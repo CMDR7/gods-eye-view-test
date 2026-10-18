@@ -69,10 +69,6 @@ function getAircraftLayers(scene) {
   );
 }
 
-function getScene() {
-  return window.__gevScene || window.__gevViewer?.scene || null;
-}
-
 function headingFor(entity) {
   const motion = entity?.gevMeta?.motion || {};
   const track = Number(motion.trackDeg);
@@ -132,21 +128,19 @@ function syncSelection(layers) {
   }
 }
 
-function install() {
-  const scene = getScene();
+export function installAircraftRendering(scene) {
   const layers = getAircraftLayers(scene);
-
-  if (!layers.length) {
-    requestAnimationFrame(install);
-    return;
-  }
+  if (!layers.length) return false;
 
   for (const layer of layers) {
     for (const entity of layer.entities.values) patchAircraftEntity(entity);
-    layer.entities.collectionChanged.addEventListener((_collection, added) => {
-      for (const entity of added) patchAircraftEntity(entity);
-      syncSelection(layers);
-    });
+    if (!layer.__gevAircraftRenderingListener) {
+      layer.entities.collectionChanged.addEventListener((_collection, added) => {
+        for (const entity of added) patchAircraftEntity(entity);
+        syncSelection(layers);
+      });
+      layer.__gevAircraftRenderingListener = true;
+    }
   }
 
   const panel = document.getElementById('targetPanel');
@@ -163,7 +157,6 @@ function install() {
   }
 
   syncSelection(layers);
+  scene.requestRender();
+  return true;
 }
-
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install, { once: true });
-else install();
