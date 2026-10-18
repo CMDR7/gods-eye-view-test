@@ -160,3 +160,25 @@ export function installAircraftRendering(scene) {
   scene.requestRender();
   return true;
 }
+
+function getScene() {
+  return window.__gevScene || window.__gevViewer?.scene || null;
+}
+
+function bootAircraftRendering(attempt = 0) {
+  const scene = getScene();
+  if (!scene?.__gevWebCoreLayers || !(scene.__gevWebCoreLayers instanceof Map) || !scene.__gevWebCoreLayers.size) {
+    if (attempt < 600) requestAnimationFrame(() => bootAircraftRendering(attempt + 1));
+    return;
+  }
+
+  if (!installAircraftRendering(scene) && attempt < 600) {
+    requestAnimationFrame(() => bootAircraftRendering(attempt + 1));
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => bootAircraftRendering(), { once: true });
+} else {
+  bootAircraftRendering();
+}
