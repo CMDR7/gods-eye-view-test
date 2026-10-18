@@ -504,14 +504,12 @@ The exact quotas displayed by Cesium can change with plan updates, so this READM
 |---|---|---|
 | Base imagery | OpenStreetMap | Direct browser tiles |
 | Terrain | Cesium Ion | Optional; only when Ion token is configured |
-| Aircraft | ADSB.lol | Direct browser request + refresh interval |
+| Aircraft | ADSB.lol via Cloudflare Worker | Browser calls dedicated relay; relay handles provider acquisition |
 | Satellites | CelesTrak | Direct browser request + 2h cache |
 | Earthquakes | USGS | Direct browser request + refresh interval |
 | City/place search | Nominatim | Explicit request + 24h cache + throttling |
 
-The goal is to avoid using a metered or restricted service when a suitable direct/free source is available.
-
-Cesium's official quota guidance explains that browser caching can reduce repeated Ion streaming requests and recommends avoiding unnecessary geocoding and excessive streaming workloads: https://cesium.com/learn/ion/optimizing-quotas/
+The goal is to avoid using a metered or restricted service when a suitable direct/free source is available, while using a small dedicated relay where browser-direct access is not reliable for the required aircraft feeds.
 
 ---
 
@@ -541,16 +539,139 @@ Official Cesium guidance: https://cesium.com/learn/ion/cesium-ion-access-tokens/
 | 3D globe | CesiumJS | Yes | Rendering engine |
 | Terrain | Cesium Ion | Optional | Elevation / terrain |
 | Base imagery | OpenStreetMap | Yes | Map imagery |
-| Aircraft | ADSB.lol | Yes | Aircraft contacts |
+| Aircraft | ADSB.lol + Cloudflare relay | Yes, via relay | Civilian + military aircraft contacts |
 | Satellites | CelesTrak | Yes | Orbital contacts |
 | Earthquakes | USGS | Yes | Seismic events |
 | City/place geocoding | Nominatim | Yes | Navigation |
 
-No GEV server proxy is required for the current Web Core data path.
+The Web Core remains browser-first. Aircraft are the deliberate exception to a purely direct-provider path: a dedicated Cloudflare Worker provides the relay required to make the civilian and military aircraft feeds reliable from the browser.
 
 ---
 
-## 14. What Web Core Does Not Currently Depend On
+## 14. Aircraft Data Architecture — Civilian + Military
+
+Aircraft are now a two-path acquisition system. **Both paths are required for the globe to populate correctly.**
+
+### Architecture
+
+```text
+                    GEV WEB CORE
+                         │
+                         │ /aircraft?lat=...&lon=...&radius=...&mode=...
+                         ▼
+              Cloudflare Worker Relay
+                `gev-aircraft-relay`
+                         │
+              ┌──────────┴──────────┐
+              │                     │
+      mode=civilian          mode=military
+              │                     │
+              ▼                     ▼
+       ADSB.LOL /point          ADSB.LOL /mil
+       point around view        military feed
+              │                     │
+              ▼                     ▼
+       radius filtering       same geographic
+                              radius filtering
+              │                     │
+              └──────────┬──────────┘
+                         ▼
+                normalized aircraft
+                         │
+              ┌──────────┴──────────┐
+              │                     │
+       CIVILIAN layer        MILITARY layer
+          cyan points             orange points
+```
+
+### Civilian aircraft
+
+For `mode=civilian`, the relay requests the ADSB.LOL point feed around the requested camera position and radius. The Web Core uses the normalized result to populate the cyan civilian aircraft layer.
+
+The current production path is:
+
+```text
+ADSB.LOL /v2/point/{lat}/{lon}/{radius}
+        ↓
+Cloudflare relay
+        ↓
+Web Core aircraft provider
+        ↓
+CIVILIAN Cesium layer
+```
+
+### Military aircraft
+
+For `mode=military`, the relay requests ADSB.LOL's military feed (`/v2/mil`) rather than reusing the civilian point endpoint. The relay then filters the military result to the same geographic radius used by Web Core.
+
+The current production path is:
+
+```text
+ADSB.LOL /v2/mil
+        ↓
+Cloudflare relay
+        ↓
+same geographic radius filter
+        ↓
+Web Core aircraft provider
+        ↓
+MILITARY Cesium layer
+```
+
+The military upstream feed is broader than the civilian point query, so the radius filter is important. The result is then rendered independently as orange military contacts.
+
+### Required Cloudflare Worker
+
+Current Worker:
+
+- **Name:** `gev-aircraft-relay`
+- **URL:** `https://gev-aircraft-relay.7cmdr7.workers.dev`
+- **Termux project:** `/root/gev-aircraft-relay`
+- **Deployment:** Wrangler
+- **Current validated deployed version:** `6ea95b38-73e3-43b4-ab8b-60b87c4950a3`
+
+The Web Core relay URL is configured in `web-core.html` through the `gev-aircraft-relay` metadata value.
+
+### Critical maintenance rule
+
+> **The Cloudflare Worker is part of the live aircraft architecture.**
+
+If aircraft acquisition behavior changes, do **not** change only `src/web-core/aircraftProvider.js` and assume the live system follows it.
+
+Always review:
+
+```text
+src/web-core/aircraftProvider.js
+workers/aircraft-relay.js
+wrangler.jsonc
+web-core.html
+```
+
+If the Worker behavior changes, redeploy the Worker with Wrangler and verify both modes independently before testing Android.
+
+### Minimum aircraft verification
+
+Before considering an aircraft change complete:
+
+1. Test the relay with `mode=civilian`.
+2. Confirm the civilian response contains aircraft records.
+3. Test the relay with `mode=military`.
+4. Confirm the military response is using the military acquisition path rather than the civilian point path.
+5. Open Android Web Core.
+6. Verify CIVILIAN alone.
+7. Verify MILITARY alone.
+8. Verify CIVILIAN + MILITARY together.
+9. Toggle each layer off and confirm the other layer remains independent.
+
+The Android validation performed for this stage confirmed approximately 1,045–1,055 civilian objects and 6–7 military objects in the tested view, with the two datasets rendering independently. The exact counts are dynamic and should not be treated as fixed expected values.
+
+### Important implementation note
+
+Do not collapse the two modes back into a single ADSB.LOL `/point` request. That was the source of the original civilian/military duplication behavior. The relay must preserve explicit civilian versus military acquisition paths.
+
+---
+
+## 15. What Web Core Does Not Currently Depend On
 
 The Web Core intentionally does **not** require:
 
@@ -560,18 +681,20 @@ The Web Core intentionally does **not** require:
 - server-side API keys
 - OpenAI services
 - voice control
-- server proxies
+- a general-purpose GEV server proxy
 - Google Maps
 - Google Photorealistic 3D Tiles
 - AISStream
 - private provider credentials
 - a database
 
+**Exception:** the aircraft layer intentionally uses the dedicated `gev-aircraft-relay` Cloudflare Worker described above. This is a narrow provider relay, not a general GEV backend.
+
 These systems can be considered later without making them prerequisites for the core application.
 
 ---
 
-## 15. Current Status
+## 16. Current Status
 
 ### Implemented and working
 
@@ -586,6 +709,12 @@ These systems can be considered later without making them prerequisites for the 
 - [x] animated tactical SVG glyphs
 - [x] tactical telemetry HUD
 - [x] aircraft layer
+- [x] separate civilian aircraft acquisition
+- [x] separate military aircraft acquisition
+- [x] Cloudflare aircraft relay
+- [x] independent civilian/military layer toggles
+- [x] cyan civilian aircraft presentation
+- [x] orange military aircraft presentation
 - [x] satellite layer
 - [x] earthquake layer
 - [x] mobile target selection
@@ -626,7 +755,7 @@ A feature is only marked complete after it is actually implemented and tested in
 
 ---
 
-## 16. Current Roadmap
+## 17. Current Roadmap
 
 ### Stage 2E — Core Reliability + Resource Efficiency **← CURRENT**
 
@@ -672,13 +801,17 @@ The guiding rule remains:
 
 ---
 
-## 17. Repository Structure
+## 18. Repository Structure
 
 The Web Core additions are intentionally separated from the larger application:
 
 ```text
 web-core.html
 vite.web-core.config.js
+wrangler.jsonc
+
+workers/
+└── aircraft-relay.js
 
 scripts/
 └── web-core.mjs
@@ -689,6 +822,8 @@ src/web-core/
 ├── ionToken.js
 ├── cityNav.js
 ├── targetIntelligence.js
+├── aircraftProvider.js
+├── aircraftPresentation.js
 ├── pickSupport.js
 ├── screenTargetResolver.js
 ├── nativeSatelliteLayer.js
@@ -706,7 +841,7 @@ The exact repository will continue to evolve as modules are extracted and respon
 
 ---
 
-## 18. Build and Deployment
+## 19. Build and Deployment
 
 The Web Core has its own Vite configuration:
 
@@ -773,7 +908,7 @@ The Web Core build and Pages deployment have been repeatedly validated through G
 
 ---
 
-## 19. Development Philosophy
+## 20. Development Philosophy
 
 Web Core is deliberately being developed as a **progressive capability system** rather than a feature dump.
 
@@ -817,7 +952,7 @@ Optional services should extend the core, not become prerequisites for it.
 
 ---
 
-## 20. Current Objective
+## 21. Current Objective
 
 The immediate objective is simple:
 
