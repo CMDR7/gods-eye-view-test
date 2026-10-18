@@ -20,7 +20,7 @@ function destinationFromVector(latitudeDeg, longitudeDeg, altitudeM, distanceM, 
   );
   const nextLongitude = longitude + Math.atan2(
     Math.sin(bearing) * sinAngular * cosLat,
-    cosAngular - sinLat * Math.sin(nextLatitude)
+    cosAngular - sinLat * Math.sin(nextLatitude),
   );
   const nextAltitude = altitudeM + (verticalRateMps || 0) * elapsedSeconds;
 
@@ -64,13 +64,18 @@ export function attachAircraftMotion(entity) {
 
 function install(attempt = 0) {
   const scene = document.querySelector('#globe canvas')?.__gevScene || null;
-  const aircraftLayer = scene?.__gevWebCoreLayers?.get('aircraft');
+  const layers = [
+    scene?.__gevWebCoreLayers?.get('civilianAircraft'),
+    scene?.__gevWebCoreLayers?.get('militaryAircraft'),
+  ].filter(Boolean);
 
-  if (aircraftLayer) {
-    for (const entity of aircraftLayer.dataSource.entities.values) attachAircraftMotion(entity);
-    aircraftLayer.dataSource.entities.collectionChanged.addEventListener((_collection, added) => {
-      for (const entity of added) attachAircraftMotion(entity);
-    });
+  if (layers.length) {
+    for (const layer of layers) {
+      for (const entity of layer.dataSource.entities.values) attachAircraftMotion(entity);
+      layer.dataSource.entities.collectionChanged.addEventListener((_collection, added) => {
+        for (const entity of added) attachAircraftMotion(entity);
+      });
+    }
     return;
   }
 
