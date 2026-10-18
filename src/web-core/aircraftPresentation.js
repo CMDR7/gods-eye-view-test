@@ -51,13 +51,17 @@ function installStyles() {
 }
 
 function getAircraftLayers(scene) {
+  const layers = scene?.__gevWebCoreLayers;
+  if (layers instanceof Map) {
+    return ['civilianAircraft', 'militaryAircraft']
+      .map((id) => layers.get(id))
+      .filter(Boolean)
+      .map((layer) => layer.dataSource)
+      .filter(Boolean);
+  }
   return (scene?.dataSources?.values || []).filter((dataSource) =>
     dataSource?.name === 'civilianAircraft' || dataSource?.name === 'militaryAircraft'
   );
-}
-
-function getScene() {
-  return window.__gevScene || window.__gevViewer?.scene || null;
 }
 
 function getSelectedTargetId() {
@@ -91,35 +95,30 @@ function syncAircraftLabels(layers) {
       if (!entity?.gevMeta || entity.gevMeta.type !== 'AIRCRAFT') continue;
       patchAircraftEntity(entity);
       const id = String(entity.gevMeta.id ?? entity.id ?? '');
-      if (entity.label && selectedId && id === selectedId) {
-        entity.label.show = true;
-      }
+      if (entity.label && selectedId && id === selectedId) entity.label.show = true;
     }
   }
 }
 
-function install(attempt = 0) {
+export function installAircraftPresentation(scene) {
   installStyles();
-  const scene = getScene();
   const layers = getAircraftLayers(scene);
+  if (!layers.length) return false;
 
-  if (layers.length) {
-    syncAircraftLabels(layers);
-    for (const layer of layers) {
+  syncAircraftLabels(layers);
+  for (const layer of layers) {
+    if (!layer.__gevAircraftPresentationListener) {
       layer.entities.collectionChanged.addEventListener(() => syncAircraftLabels(layers));
+      layer.__gevAircraftPresentationListener = true;
     }
-
-    const panel = document.getElementById('targetPanel');
-    const observer = panel
-      ? new MutationObserver(() => syncAircraftLabels(layers))
-      : null;
-    if (observer && panel) observer.observe(panel, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['hidden'] });
-
-    return;
   }
 
-  if (attempt < 600) requestAnimationFrame(() => install(attempt + 1));
-}
+  const panel = document.getElementById('targetPanel');
+  if (panel && !panel.__gevAircraftPresentationObserver) {
+    const observer = new MutationObserver(() => syncAircraftLabels(layers));
+    observer.observe(panel, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['hidden'] });
+    panel.__gevAircraftPresentationObserver = observer;
+  }
 
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => install(), { once: true });
-else install();
+  return true;
+}
