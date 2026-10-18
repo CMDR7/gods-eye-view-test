@@ -3,6 +3,8 @@ const AIRPLANES_LIVE_API_BASE = 'https://api.airplanes.live/v2';
 const FEET_TO_METERS = 0.3048;
 const KNOTS_TO_MPS = 0.5144444444;
 const FEET_PER_MIN_TO_MPS = FEET_TO_METERS / 60;
+const EARTH_RADIUS_KM = 6371;
+const NM_TO_KM = 1.852;
 
 function finiteNumber(value) {
   const numeric = Number(value);
@@ -20,6 +22,17 @@ function booleanFlag(value) {
   if (typeof value === 'number') return value !== 0;
   if (typeof value === 'string') return /^(true|1|yes|military|pia|ladd)$/i.test(value.trim());
   return false;
+}
+
+function distanceNm(lat1, lon1, lat2, lon2) {
+  const phi1 = Number(lat1) * Math.PI / 180;
+  const phi2 = Number(lat2) * Math.PI / 180;
+  const deltaPhi = (Number(lat2) - Number(lat1)) * Math.PI / 180;
+  const deltaLambda = (Number(lon2) - Number(lon1)) * Math.PI / 180;
+  const a = Math.sin(deltaPhi / 2) ** 2
+    + Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
+  return (EARTH_RADIUS_KM * c) / NM_TO_KM;
 }
 
 function getRelayBase() {
@@ -138,6 +151,7 @@ function normalizePayload(payload, provider, observedAt, latitude, longitude, ra
   const aircraft = (payload?.ac ?? [])
     .map((raw) => normalizeAircraft(raw, observedAt, classification))
     .filter((item) => Number.isFinite(item.position.latitude) && Number.isFinite(item.position.longitude))
+    .filter((item) => distanceNm(latitude, longitude, item.position.latitude, item.position.longitude) <= radius)
     .filter((item) => classification === 'military' || !item.flags.military);
   return { observedAt, latitude, longitude, radiusNm: radius, provider, classification, aircraft };
 }
