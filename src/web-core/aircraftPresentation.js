@@ -56,6 +56,10 @@ function getAircraftLayers(scene) {
   );
 }
 
+function getScene() {
+  return window.__gevScene || window.__gevViewer?.scene || null;
+}
+
 function getSelectedTargetId() {
   const panel = document.getElementById('targetPanel');
   if (!panel || panel.hidden) return null;
@@ -96,7 +100,7 @@ function syncAircraftLabels(layers) {
 
 function install(attempt = 0) {
   installStyles();
-  const scene = document.querySelector('#globe canvas')?.__gevScene || null;
+  const scene = getScene();
   const layers = getAircraftLayers(scene);
 
   if (layers.length) {
