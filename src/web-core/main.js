@@ -205,13 +205,34 @@ async function loadAircraft() {
     if (!Number.isFinite(aLon) || !Number.isFinite(aLat)) continue;
     const altitude = Number(ac.alt_baro);
     const callsign = ac.flight?.trim() || ac.hex || 'AIR';
-    addPoint(layer, aLon, aLat, Number.isFinite(altitude) ? altitude * 0.3048 : 500, callsign, Cesium.Color.CYAN, 6, {
-      type: 'AIRCRAFT', name: callsign, id: ac.hex || callsign, source: 'ADSB.LOL', updated,
-      altitude: Number.isFinite(altitude) ? altitude * 0.3048 : 500, callsign, hex: ac.hex || 'UNKNOWN',
-      squawk: ac.squawk || '—', registration: ac.r || ac.reg || '—', category: ac.category || '—',
-    });
+    addPoint(
+      layer,
+      aLon,
+      aLat,
+      Number.isFinite(altitude) ? altitude * 0.3048 : 500,
+      callsign,
+      Cesium.Color.CYAN,
+      6,
+      {
+        type: 'AIRCRAFT',
+        name: callsign,
+        id: ac.hex || callsign,
+        source: 'ADSB.LOL',
+        updated,
+        altitude: Number.isFinite(altitude) ? altitude * 0.3048 : 500,
+        callsign,
+        hex: ac.hex || 'UNKNOWN',
+        squawk: ac.squawk || '—',
+        registration: ac.r || ac.reg || '—',
+        category: ac.category || '—',
+      },
+    );
 
-    if ((index + 1) % AIRCRAFT_BATCH_SIZE === 0 && index + 1 < renderCount) await yieldToRenderLoop();
+    if (
+      (index + 1) % AIRCRAFT_BATCH_SIZE === 0 &&
+      index + 1 < renderCount
+    )
+      await yieldToRenderLoop();
   }
 
   return renderCount;
@@ -397,6 +418,6 @@ async function initialize() {
     } else setStatus('WEB CORE READY // ION TOKEN NOT CONFIGURED', 'warn');
   } catch (error) { console.warn('[GEV] Ion terrain unavailable', error); setStatus('ION TERRAIN ERROR // 403 ACCESS DENIED', 'warn'); }
   $('ionSave')?.addEventListener('click', () => { try { saveIonToken($('ionToken').value, $('ionPersist')?.checked !== false); setStatus('ION TOKEN SAVED // RELOADING TERRAIN', 'ok'); location.reload(); } catch (error) { setStatus(`ION TOKEN ERROR // ${error.message}`, 'warn'); } });
-  $('ionClear')?.addEventListener('click', () => { clearIonToken(); setStatus('ION TOKEN CLEARED // RELOADING', 'warn'); location.reload(); });
+  $('ionClear')?.addEventListener('click', () => { clearIonToken(); setStatus('ION TOKEN CLEARED // RELOADING'); location.reload(); });
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize, { once: true }); else initialize();
