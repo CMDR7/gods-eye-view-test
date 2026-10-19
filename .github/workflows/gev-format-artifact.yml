@@ -1,0 +1,33 @@
+name: Temporary GEV formatter artifact
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  format-artifact:
+    if: github.sha == 'd44c20bbdfbf4dac4edf67debf49649fc24fe341'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 1
+      - name: Use Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.14.0
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Format main.js with repository Prettier
+        run: npx prettier src/web-core/main.js --write
+      - name: Upload formatted main.js
+        uses: actions/upload-artifact@v4
+        with:
+          name: gev-formatted-main-js
+          path: src/web-core/main.js
