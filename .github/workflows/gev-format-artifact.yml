@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   format-artifact:
-    if: github.sha == 'd44c20bbdfbf4dac4edf67debf49649fc24fe341'
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
