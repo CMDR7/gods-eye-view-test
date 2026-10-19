@@ -8,6 +8,8 @@ import './style.css';
 const REFRESH_MS = 60_000;
 const SATELLITE_REFRESH_MS = 2 * 60 * 60 * 1000;
 const MAX_SATELLITES = 1500;
+const MAX_AIRCRAFT = 300;
+const AIRCRAFT_BATCH_SIZE = 20;
 const ION_TERRAIN_TIMEOUT_MS = 15_000;
 const DRAWER_TRANSITION_MS = 320;
 const DEFAULT_NAV_ALTITUDE = 15_000;
@@ -97,6 +99,10 @@ function addPoint(layer, lon, lat, height, label, color, pixelSize = 7, metadata
   };
   entity.gevVisual = { color, pixelSize };
   return entity;
+}
+
+function yieldToRenderLoop() {
+  return new Promise((resolve) => requestAnimationFrame(resolve));
 }
 
 function satellitePositionAtTime(satrec, time, result) {
@@ -189,7 +195,11 @@ async function loadAircraft() {
   const lon = Cesium.Math.toDegrees(camera.longitude);
   const data = await fetchJson(`https://api.adsb.lol/v2/point/${lat.toFixed(4)}/${lon.toFixed(4)}/250`);
   const updated = new Date().toISOString();
-  for (const ac of data.ac ?? []) {
+  const aircraft = data.ac ?? [];
+  const renderCount = Math.min(aircraft.length, MAX_AIRCRAFT);
+
+  for (let index = 0; index < renderCount; index += 1) {
+    const ac = aircraft[index];
     const aLon = Number(ac.lon);
     const aLat = Number(ac.lat);
     if (!Number.isFinite(aLon) || !Number.isFinite(aLat)) continue;
@@ -200,8 +210,11 @@ async function loadAircraft() {
       altitude: Number.isFinite(altitude) ? altitude * 0.3048 : 500, callsign, hex: ac.hex || 'UNKNOWN',
       squawk: ac.squawk || '—', registration: ac.r || ac.reg || '—', category: ac.category || '—',
     });
+
+    if ((index + 1) % AIRCRAFT_BATCH_SIZE === 0 && index + 1 < renderCount) await yieldToRenderLoop();
   }
-  return data.ac?.length ?? 0;
+
+  return renderCount;
 }
 
 async function loadSatellites() {
@@ -362,7 +375,7 @@ function addLayerControls() {
   }
 }
 async function initialize() {
-  const viewer = new Cesium.Viewer('globe', { animation: false, timeline: false, geocoder: false, homeButton: false, sceneModePicker: false, navigationHelpButton: false, fullscreenButton: false, selectionIndicator: false, infoBox: false, baseLayerPicker: false, terrainProvider: undefined, shouldAnimate: true });
+  const viewer = new Cesium.Viewer('globe', { animation: false, timeline: false, geocoder: false, homeButton: false, sceneModePicker: false, navigationHelpButton: false, fullscreenButton: false, baseLayerPicker: false, terrainProvider: undefined, shouldAnimate: true });
   state.viewer = viewer;
   window.__gevViewer = viewer;
   viewer.clock.currentTime = Cesium.JulianDate.now(); viewer.clock.clockStep = Cesium.ClockStep.SYSTEM_CLOCK_MULTIPLIER; viewer.clock.multiplier = 1; viewer.clock.shouldAnimate = true;
@@ -384,6 +397,6 @@ async function initialize() {
     } else setStatus('WEB CORE READY // ION TOKEN NOT CONFIGURED', 'warn');
   } catch (error) { console.warn('[GEV] Ion terrain unavailable', error); setStatus('ION TERRAIN ERROR // 403 ACCESS DENIED', 'warn'); }
   $('ionSave')?.addEventListener('click', () => { try { saveIonToken($('ionToken').value, $('ionPersist')?.checked !== false); setStatus('ION TOKEN SAVED // RELOADING TERRAIN', 'ok'); location.reload(); } catch (error) { setStatus(`ION TOKEN ERROR // ${error.message}`, 'warn'); } });
-  $('ionClear')?.addEventListener('click', () => { clearIonToken(); setStatus('ION TOKEN CLEARED // RELOADING', 'ok'); location.reload(); });
+  $('ionClear')?.addEventListener('click', () => { clearIonToken(); setStatus('ION TOKEN CLEARED // RELOADING', 'warn'); location.reload(); });
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize, { once: true }); else initialize();
