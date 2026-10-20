@@ -16,5 +16,5 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: node --test src/scopeMask.test.mjs src/celestialRing.test.mjs src/web-core/flightCoverage.test.mjs
+      - run: node --test src/scopeMask.test.mjs src/celestialRing.test.mjs src/web-core/flightCoverage.test.mjs src/web-core/aircraftRenderQueue.test.mjs
       - run: node scripts/web-core.mjs
