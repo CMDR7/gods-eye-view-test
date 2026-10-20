@@ -109,4 +109,3 @@ export function filterFlightsToCoverage(records, query) {
       validCoordinate(record) && flightDistanceNm(query, record) <= radiusNm,
   );
 }
-
