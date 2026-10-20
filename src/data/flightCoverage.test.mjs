@@ -61,4 +61,3 @@ test('global snapshots are filtered to the active focal-point radius', () => {
     ['near'],
   );
 });
-
