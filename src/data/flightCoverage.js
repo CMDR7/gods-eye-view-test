@@ -27,9 +27,7 @@ export function clampFlightCoverageRadiusNm(
   fallback = FLIGHT_COVERAGE_MAX_RADIUS_NM,
 ) {
   const parsed =
-    value === null || value === undefined || value === ''
-      ? NaN
-      : Number(value);
+    value === null || value === undefined || value === '' ? NaN : Number(value);
   const safeValue = Number.isFinite(parsed) ? parsed : fallback;
   return Math.round(
     Math.min(
@@ -57,8 +55,7 @@ export function flightDistanceNm(origin, destination) {
   const sinLat = Math.sin(deltaLat / 2);
   const sinLon = Math.sin(deltaLon / 2);
   const haversine =
-    sinLat * sinLat +
-    Math.cos(lat1) * Math.cos(lat2) * sinLon * sinLon;
+    sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLon * sinLon;
 
   return (
     2 *
@@ -112,3 +109,4 @@ export function filterFlightsToCoverage(records, query) {
       validCoordinate(record) && flightDistanceNm(query, record) <= radiusNm,
   );
 }
+
