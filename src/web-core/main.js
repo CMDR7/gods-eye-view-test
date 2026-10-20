@@ -6,6 +6,7 @@ import { applyStoredIonToken, clearIonToken, getIonTokenStatus, saveIonToken } f
 import { fetchAircraftSnapshot } from './aircraftProvider.js';
 import { getAircraftApertureCoverage } from './flightCoverage.js';
 import { attachAircraftMotion } from './aircraftMotion.js';
+import { renderAircraftInBatches } from './aircraftRenderQueue.js';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import './style.css';
 
@@ -209,34 +210,61 @@ async function loadAircraft(classification, layerId) {
   const wasTracked = Boolean(previousSelection)
     && state.viewer.trackedEntity === previousSelection;
   if (previousSelection) clearSelectedTarget();
-  layer.dataSource.entities.removeAll();
+  const entities = layer.dataSource.entities;
+  entities.removeAll();
 
   const color = classification === 'military' ? Cesium.Color.ORANGE : Cesium.Color.CYAN;
-  for (const aircraft of snapshot.aircraft) {
-    const lon = aircraft.position.longitude;
-    const lat = aircraft.position.latitude;
-    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
-    const altitude = aircraft.position.altitudeBarometricM ?? aircraft.position.altitudeGeometricM ?? 500;
-    const callsign = aircraft.identity.callsign || aircraft.identity.icaoHex || 'AIR';
-    const entity = addPoint(layer, lon, lat, altitude, callsign, color, 6, {
-      type: 'AIRCRAFT', name: callsign, id: aircraft.identity.icaoHex || callsign,
-      source: snapshot.provider, updated: snapshot.observedAt, altitude,
-      classification, callsign, hex: aircraft.identity.icaoHex || 'UNKNOWN',
-      squawk: aircraft.transponder.squawk || '—',
-      registration: aircraft.identity.registration || '—',
-      category: aircraft.identity.category || '—',
-      aircraft, identity: aircraft.identity, position: aircraft.position,
-      motion: aircraft.motion, navigation: aircraft.navigation, signal: aircraft.signal,
-      integrity: aircraft.integrity, flags: aircraft.flags, transponder: aircraft.transponder,
-      environment: aircraft.environment,
+  let renderedCount;
+  try {
+    renderedCount = await renderAircraftInBatches({
+      collection: entities,
+      aircraft: snapshot.aircraft,
+      isCurrent: () =>
+        state.aircraftRequestSequence.get(layerId) === requestSequence
+        && layer.enabled,
+      renderItem(aircraft) {
+        const lon = aircraft.position.longitude;
+        const lat = aircraft.position.latitude;
+        if (
+          !Number.isFinite(lon) || lon < -180 || lon > 180 ||
+          !Number.isFinite(lat) || lat < -90 || lat > 90
+        ) return false;
+        const altitude = aircraft.position.altitudeBarometricM ?? aircraft.position.altitudeGeometricM ?? 500;
+        const callsign = aircraft.identity.callsign || aircraft.identity.icaoHex || 'AIR';
+        const entity = addPoint(layer, lon, lat, altitude, callsign, color, 6, {
+          type: 'AIRCRAFT', name: callsign, id: aircraft.identity.icaoHex || callsign,
+          source: snapshot.provider, updated: snapshot.observedAt, altitude,
+          classification, callsign, hex: aircraft.identity.icaoHex || 'UNKNOWN',
+          squawk: aircraft.transponder.squawk || '—',
+          registration: aircraft.identity.registration || '—',
+          category: aircraft.identity.category || '—',
+          aircraft, identity: aircraft.identity, position: aircraft.position,
+          motion: aircraft.motion, navigation: aircraft.navigation, signal: aircraft.signal,
+          integrity: aircraft.integrity, flags: aircraft.flags, transponder: aircraft.transponder,
+          environment: aircraft.environment,
+        });
+        attachAircraftMotion(entity);
+        return true;
+      },
     });
-    attachAircraftMotion(entity);
+  } catch (error) {
+    try {
+      entities.removeAll();
+    } catch (cleanupError) {
+      console.warn('[GEV] Failed to clear partial aircraft snapshot', cleanupError);
+    }
+    throw error;
   }
+
+  if (
+    state.aircraftRequestSequence.get(layerId) !== requestSequence
+    || !layer.enabled
+  ) return null;
 
   // Keep selection/tracking stable across a coverage refresh when the same
   // transponder is still inside the returned aperture query.
   if (selectedId !== null) {
-    const replacement = layer.dataSource.entities.values.find(
+    const replacement = entities.values.find(
       (entity) => String(entity.gevMeta?.id) === String(selectedId),
     );
     if (replacement) {
@@ -248,9 +276,13 @@ async function loadAircraft(classification, layerId) {
     }
   }
 
-  return snapshot.aircraft.length;
+  if (snapshot.aircraft.length > renderedCount) {
+    console.info(
+      `[GEV] ${classification} aircraft render budget: ${renderedCount}/${snapshot.aircraft.length}`,
+    );
+  }
+  return renderedCount;
 }
-
 async function loadSatellites() {
   const layer = state.layers.get('satellites');
   clearLayer('satellites');
@@ -313,10 +345,15 @@ async function refreshLayer(id, loader) {
     setStatus(`${state.layers.get(id).name}: ${count} objects`, 'ok');
   } catch (error) {
     console.warn(`[GEV] ${id} unavailable`, error);
-    setStatus(`${state.layers.get(id).name}: unavailable from this browser`, 'warn');
+    const detail = String(error?.message || error || 'request failed')
+      .replace(/\\s+/g, ' ')
+      .slice(0, 72);
+    setStatus(
+      `${state.layers.get(id).name}: unavailable · ${detail}`,
+      'warn',
+    );
   }
 }
-
 function schedule(id, loader, interval) {
   const previous = state.timers.get(id);
   if (previous) clearInterval(previous);
