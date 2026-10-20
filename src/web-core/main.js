@@ -4,6 +4,7 @@ import { destroyScopeMask, installScopeMask } from '../scopeMask.js';
 import { createOsmImagery } from '../maps/imagery.js';
 import { applyStoredIonToken, clearIonToken, getIonTokenStatus, saveIonToken } from './ionToken.js';
 import { fetchAircraftSnapshot } from './aircraftProvider.js';
+import { getAircraftApertureCoverage } from './flightCoverage.js';
 import { attachAircraftMotion } from './aircraftMotion.js';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import './style.css';
@@ -22,6 +23,7 @@ const state = {
   viewer: null,
   layers: new Map(),
   timers: new Map(),
+  aircraftRequestSequence: new Map(),
   ionTerrainEnabled: false,
   commandPanelOpen: false,
   selectedEntity: null,
@@ -158,33 +160,56 @@ async function loadEarthquakes() {
 }
 
 function getAircraftQueryPoint() {
-  const scene = state.viewer.scene;
-  const camera = state.viewer.camera;
-  const center = new Cesium.Cartesian2(scene.canvas.clientWidth * 0.5, scene.canvas.clientHeight * 0.5);
-  const picked = camera.pickEllipsoid(center, scene.globe.ellipsoid);
-  if (Cesium.defined(picked)) {
-    const cartographic = Cesium.Cartographic.fromCartesian(picked);
-    return {
-      latitude: Cesium.Math.toDegrees(cartographic.latitude),
-      longitude: Cesium.Math.toDegrees(cartographic.longitude),
-    };
-  }
-  const cartographic = camera.positionCartographic;
-  return {
-    latitude: Cesium.Math.toDegrees(cartographic.latitude),
-    longitude: Cesium.Math.toDegrees(cartographic.longitude),
-  };
+  return getAircraftApertureCoverage(state.viewer);
 }
 
 async function loadAircraft(classification, layerId) {
   const layer = state.layers.get(layerId);
-  clearLayer(layerId);
+  if (!layer?.enabled) return null;
+
+  const requestSequence = (state.aircraftRequestSequence.get(layerId) || 0) + 1;
+  state.aircraftRequestSequence.set(layerId, requestSequence);
+
   const query = getAircraftQueryPoint();
-  const snapshot = await fetchAircraftSnapshot(query.latitude, query.longitude, 250, classification);
+  if (!query) {
+    setStatus(
+      `AIRCRAFT ${classification.toUpperCase()} FOCUS UNAVAILABLE // AIM AT EARTH`,
+      'warn',
+    );
+    return null;
+  }
+
+  window.__gevAircraftCoverage = {
+    latitude: query.latitude,
+    longitude: query.longitude,
+    radiusNm: query.radiusNm,
+    boundarySampleCount: query.boundarySampleCount,
+  };
+
+  const snapshot = await fetchAircraftSnapshot(
+    query.latitude,
+    query.longitude,
+    query.radiusNm,
+    classification,
+  );
+  if (
+    state.aircraftRequestSequence.get(layerId) !== requestSequence
+    || !layer.enabled
+  ) return null;
+
   window.__gevAircraftSnapshots = window.__gevAircraftSnapshots || {};
   window.__gevAircraftSnapshots[classification] = snapshot;
   window.__gevAircraftSnapshot = snapshot;
   window.__gevAircraftProvider = snapshot.provider;
+
+  const previousSelection = state.selectedLayerId === layerId
+    ? state.selectedEntity
+    : null;
+  const selectedId = previousSelection?.gevMeta?.id ?? null;
+  const wasTracked = Boolean(previousSelection)
+    && state.viewer.trackedEntity === previousSelection;
+  if (previousSelection) clearSelectedTarget();
+  layer.dataSource.entities.removeAll();
 
   const color = classification === 'military' ? Cesium.Color.ORANGE : Cesium.Color.CYAN;
   for (const aircraft of snapshot.aircraft) {
@@ -207,6 +232,22 @@ async function loadAircraft(classification, layerId) {
     });
     attachAircraftMotion(entity);
   }
+
+  // Keep selection/tracking stable across a coverage refresh when the same
+  // transponder is still inside the returned aperture query.
+  if (selectedId !== null) {
+    const replacement = layer.dataSource.entities.values.find(
+      (entity) => String(entity.gevMeta?.id) === String(selectedId),
+    );
+    if (replacement) {
+      selectTarget(replacement);
+      if (wasTracked) {
+        state.viewer.trackedEntity = replacement;
+        $('targetTrack').textContent = 'UNTRACK';
+      }
+    }
+  }
+
   return snapshot.aircraft.length;
 }
 
@@ -268,6 +309,7 @@ async function refreshLayer(id, loader) {
   if (!state.layers.get(id)?.enabled) return;
   try {
     const count = await loader();
+    if (count === null || count === undefined) return;
     setStatus(`${state.layers.get(id).name}: ${count} objects`, 'ok');
   } catch (error) {
     console.warn(`[GEV] ${id} unavailable`, error);
@@ -281,6 +323,21 @@ function schedule(id, loader, interval) {
   const timer = setInterval(() => refreshLayer(id, loader), interval);
   state.timers.set(id, timer);
   refreshLayer(id, loader);
+}
+
+function installAircraftCoverageRefresh(viewer) {
+  let refreshTimer = null;
+  viewer.camera.moveEnd.addEventListener(() => {
+    window.clearTimeout(refreshTimer);
+    refreshTimer = window.setTimeout(() => {
+      if (state.layers.get('civilianAircraft')?.enabled) {
+        void refreshLayer('civilianAircraft', () => loadAircraft('civilian', 'civilianAircraft'));
+      }
+      if (state.layers.get('militaryAircraft')?.enabled) {
+        void refreshLayer('militaryAircraft', () => loadAircraft('military', 'militaryAircraft'));
+      }
+    }, 320);
+  });
 }
 
 function focusHome() { state.viewer.camera.flyHome(1.2); }
@@ -408,7 +465,7 @@ async function initialize() {
   window.addEventListener('pageshow', (event) => {
     if (event.persisted) installScopeMask(viewer);
   });
-  addLayerControls(); addTargetInteraction(); addCoordinateNavigation();
+  addLayerControls(); installAircraftCoverageRefresh(viewer); addTargetInteraction(); addCoordinateNavigation();
   $('targetFly')?.addEventListener('click', flyToSelectedTarget); $('targetTrack')?.addEventListener('click', toggleTargetTracking); $('targetClear')?.addEventListener('click', clearSelectedTarget); $('menuToggle')?.addEventListener('click', () => toggleCommandPanel()); $('commandClose')?.addEventListener('click', () => toggleCommandPanel(false)); $('commandBackdrop')?.addEventListener('click', () => toggleCommandPanel(false));
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape') toggleCommandPanel(false); });
   document.addEventListener('click', (event) => { const panel = $('commandPanel'); if (state.commandPanelOpen && panel && !panel.contains(event.target) && event.target !== $('menuToggle')) toggleCommandPanel(false); });
