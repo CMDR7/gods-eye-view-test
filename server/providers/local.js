@@ -1,4 +1,5 @@
 import { openSkyProxy } from './aircraft/opensky.js';
+import { adaptiveOpenSkyProxy } from './aircraft/adaptiveCoverage.js';
 import { celestrakProxy, rocketLaunchesProxy } from './space.js';
 import { tomtomProxy } from './traffic.js';
 import { firmsProxy } from './firms.js';
@@ -34,7 +35,7 @@ import { windProxy } from './wind.js';
  */
 function localProviderPlugins({ realtime } = {}) {
   return [
-    openSkyProxy(),
+    adaptiveOpenSkyProxy({ upstream: openSkyProxy() }),
     celestrakProxy(),
     tomtomProxy(),
     firmsProxy(),

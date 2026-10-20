@@ -73,6 +73,8 @@ export function createFlightSource({
         params.set('lat', query.latitude.toFixed(4));
         params.set('lon', query.longitude.toFixed(4));
       }
+      if (Number.isFinite(query.radiusNm))
+        params.set('radius_nm', query.radiusNm.toFixed(1));
       const { response, payload } = await readResponse(
         fetchImpl,
         `/api/flights${params.size ? '?' + params : ''}`,
