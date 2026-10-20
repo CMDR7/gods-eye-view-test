@@ -109,7 +109,6 @@ export function filterFlightsToCoverage(records, query) {
   const radiusNm = clampFlightCoverageRadiusNm(query.radiusNm);
   return records.filter(
     (record) =>
-      validCoordinate(record) &&
-      flightDistanceNm(query, record) <= radiusNm,
+      validCoordinate(record) && flightDistanceNm(query, record) <= radiusNm,
   );
 }
