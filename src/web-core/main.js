@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import * as satellite from 'satellite.js';
+import { destroyScopeMask, installScopeMask } from '../scopeMask.js';
 import { createOsmImagery } from '../maps/imagery.js';
 import { applyStoredIonToken, clearIonToken, getIonTokenStatus, saveIonToken } from './ionToken.js';
 import { fetchAircraftSnapshot } from './aircraftProvider.js';
@@ -401,6 +402,12 @@ async function initialize() {
   viewer.scene.requestRenderMode = false;
   viewer.imageryLayers.addImageryProvider(createOsmImagery());
   viewer.camera.setView({ destination: Cesium.Cartesian3.fromDegrees(10, 50, 3_500_000), orientation: { heading: 0, pitch: Cesium.Math.toRadians(-60), roll: 0 } });
+  // The scope is presentation-only; Cesium remains the owner of camera and target state.
+  installScopeMask(viewer);
+  window.addEventListener('pagehide', destroyScopeMask);
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) installScopeMask(viewer);
+  });
   addLayerControls(); addTargetInteraction(); addCoordinateNavigation();
   $('targetFly')?.addEventListener('click', flyToSelectedTarget); $('targetTrack')?.addEventListener('click', toggleTargetTracking); $('targetClear')?.addEventListener('click', clearSelectedTarget); $('menuToggle')?.addEventListener('click', () => toggleCommandPanel()); $('commandClose')?.addEventListener('click', () => toggleCommandPanel(false)); $('commandBackdrop')?.addEventListener('click', () => toggleCommandPanel(false));
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape') toggleCommandPanel(false); });

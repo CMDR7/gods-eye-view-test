@@ -2,6 +2,18 @@ html, body, #app, #cesiumContainer { width: 100%; height: 100%; margin: 0; overf
 :root { color-scheme: dark; --gev-bg: rgba(3,8,12,.84); --gev-panel: rgba(4,10,15,.78); --gev-line: rgba(0,220,255,.42); --gev-line-strong: rgba(0,220,255,.78); --gev-text: #dffaff; --gev-muted: #9fb2bd; font-family: 'Orbitron', sans-serif; background: #05070a; }
 body { background: #05070a; }
 #cesiumContainer { position: fixed; inset: 0; }
+
+/* Circular scope above the Cesium canvas, below the interactive HUD.
+   It never captures taps or touches; camera and data behavior stay in Cesium. */
+#scope-mask {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+}
 #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
 #brand { position: absolute; top: 14px; left: 14px; padding: 10px 13px; border: 1px solid rgba(0,220,255,.38); border-radius: 5px; background: rgba(3,8,12,.78); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); font: 500 13px/1 'Orbitron', sans-serif; letter-spacing: .16em; color: var(--gev-text); box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 0 16px rgba(0,220,255,.08); }
 #gevTimeHud { position: absolute; left: 14px; top: 57px; bottom: auto; z-index: 12; transform: none; display: flex; align-items: center; justify-content: center; gap: 10px; box-sizing: border-box; max-width: calc(100vw - 28px); padding: 7px 11px; border: 1px solid rgba(90,220,255,.38); border-radius: 4px; background: rgba(4,8,12,.86); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); font: 600 10px/1 'Orbitron', sans-serif; letter-spacing: .12em; color: rgba(190,235,255,.9); text-shadow: 0 0 7px rgba(0,220,255,.18); white-space: nowrap; box-shadow: 0 0 14px rgba(0,220,255,.08), inset 0 1px 0 rgba(180,240,255,.08); }
