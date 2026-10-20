@@ -48,6 +48,20 @@ function getRelayBase() {
   }
 }
 
+/**
+ * The configured GEV relay already fans out to browser-blocked providers.
+ * A valid empty relay snapshot is still a successful acquisition result.
+ */
+export function shouldAcceptAircraftResult(provider, aircraftCount, lastProvider) {
+  return aircraftCount > 0 || provider === 'GEV RELAY' || provider === lastProvider;
+}
+
+export function formatAircraftProviderErrors(errors) {
+  return errors
+    .map(({ provider, message }) => `${provider}: ${message}`)
+    .join(' | ');
+}
+
 export function normalizeAircraft(raw, observedAt = new Date().toISOString(), classification = 'civilian') {
   const latitude = finiteNumber(raw?.lat);
   const longitude = finiteNumber(raw?.lon);
@@ -182,19 +196,25 @@ export async function fetchAircraftSnapshot(latitude, longitude, radiusNm = 250,
     );
   }
 
-  let lastError = null;
+  const providerErrors = [];
+  const lastProvider = providers[providers.length - 1]?.[0];
 
   for (const [provider, url] of providers) {
     try {
       const payload = await requestAircraftPayload(url);
       const result = normalizePayload(payload, payload?.provider || provider, observedAt, lat, lon, radius, mode);
-      if (result.aircraft.length > 0 || provider === providers[providers.length - 1][0]) return result;
+      if (shouldAcceptAircraftResult(provider, result.aircraft.length, lastProvider)) {
+        return result;
+      }
     } catch (error) {
-      lastError = error;
+      const message = String(error?.message || error || 'request failed');
+      providerErrors.push({ provider, message });
       console.warn(`[GEV] ${provider} ${mode} aircraft request failed`, error);
     }
   }
 
-  if (relayBase) throw lastError || new Error(`AIRCRAFT ${mode.toUpperCase()} RELAY UNAVAILABLE`);
+  const detail = formatAircraftProviderErrors(providerErrors);
+  if (detail) throw new Error(detail);
+  if (relayBase) throw new Error(`AIRCRAFT ${mode.toUpperCase()} RELAY UNAVAILABLE`);
   throw new Error('AIRCRAFT RELAY NOT CONFIGURED // DIRECT PROVIDERS ARE BROWSER-BLOCKED');
 }
