@@ -48,8 +48,7 @@ export async function renderAircraftInBatches({
     collection.suspendEvents();
     try {
       for (let index = offset; index < end; index += 1) {
-        renderItem(admitted[index], index);
-        rendered += 1;
+        if (renderItem(admitted[index], index) !== false) rendered += 1;
       }
     } finally {
       collection.resumeEvents();
