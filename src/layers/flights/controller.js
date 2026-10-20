@@ -61,28 +61,49 @@ export function createController({
     // aircraft location. Misses at the horizon are ignored; if every edge ray
     // misses, auto coverage falls back conservatively to the provider maximum.
     const boundaryPoints = [];
+    const centerX = width / 2;
+    const centerY = height / 2;
     const lastX = Math.max(0, width - 1);
     const lastY = Math.max(0, height - 1);
-    const edgeSteps = 8;
-    for (let index = 0; index <= edgeSteps; index += 1) {
-      const fraction = index / edgeSteps;
-      const x = fraction * lastX;
-      const y = fraction * lastY;
-      const samples = [
-        [x, 0],
-        [x, lastY],
-        [0, y],
-        [lastX, y],
-      ];
-      for (const [sampleX, sampleY] of samples) {
-        const point = _screenCartographic(
+    const edgeAnchors = [
+      [0, 0],
+      [centerX, 0],
+      [lastX, 0],
+      [lastX, centerY],
+      [lastX, lastY],
+      [centerX, lastY],
+      [0, lastY],
+      [0, centerY],
+    ];
+    const inwardFractions = [
+      0.9375, 0.875, 0.75, 0.625, 0.5, 0.375, 0.25, 0.125, 0.0625,
+    ];
+    for (const [edgeX, edgeY] of edgeAnchors) {
+      let point = _screenCartographic(
+        scene,
+        camera,
+        ellipsoid,
+        edgeX,
+        edgeY,
+      );
+      if (point) {
+        boundaryPoints.push(point);
+        continue;
+      }
+      // A horizon may cross the viewport before its border. Walk inward along
+      // that screen ray to find the furthest sampled ground intersection.
+      for (const fraction of inwardFractions) {
+        point = _screenCartographic(
           scene,
           camera,
           ellipsoid,
-          sampleX,
-          sampleY,
+          centerX + (edgeX - centerX) * fraction,
+          centerY + (edgeY - centerY) * fraction,
         );
-        if (point) boundaryPoints.push(point);
+        if (point) {
+          boundaryPoints.push(point);
+          break;
+        }
       }
     }
 
