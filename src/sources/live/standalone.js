@@ -136,7 +136,7 @@ export function createMilitarySource({
         '/api/military',
         { signal },
         'Military aircraft',
-        );
+      );
       if (!response.ok) throw httpError(response, 'Military aircraft');
       return readsbIdentities(payload);
     },
