@@ -38,8 +38,7 @@ test('center globe pick determines focal point and viewport coverage radius', ()
     },
     camera: {
       getPickRay: (point) => ({
-        source:
-          point.x === 400 && point.y === 300 ? 'view-center' : 'edge',
+        source: point.x === 400 && point.y === 300 ? 'view-center' : 'edge',
       }),
       pickEllipsoid: () => assert.fail('unexpected fallback'),
     },
