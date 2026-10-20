@@ -79,13 +79,7 @@ export function createController({
       0.9375, 0.875, 0.75, 0.625, 0.5, 0.375, 0.25, 0.125, 0.0625,
     ];
     for (const [edgeX, edgeY] of edgeAnchors) {
-      let point = _screenCartographic(
-        scene,
-        camera,
-        ellipsoid,
-        edgeX,
-        edgeY,
-      );
+      let point = _screenCartographic(scene, camera, ellipsoid, edgeX, edgeY);
       if (point) {
         boundaryPoints.push(point);
         continue;
