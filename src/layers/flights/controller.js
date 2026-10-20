@@ -55,16 +55,14 @@ export function acquisitionRadiusNm(viewer, centerCartographic) {
       cartographic,
     );
     const distanceNm = geodesic.surfaceDistance / METERS_PER_NAUTICAL_MILE;
-    if (Number.isFinite(distanceNm)) furthestNm = Math.max(furthestNm, distanceNm);
+    if (Number.isFinite(distanceNm))
+      furthestNm = Math.max(furthestNm, distanceNm);
   }
 
   if (!furthestNm) return ACQUISITION_MAX_RADIUS_NM;
   return Math.min(
     ACQUISITION_MAX_RADIUS_NM,
-    Math.max(
-      ACQUISITION_MIN_RADIUS_NM,
-      furthestNm * ACQUISITION_MARGIN,
-    ),
+    Math.max(ACQUISITION_MIN_RADIUS_NM, furthestNm * ACQUISITION_MARGIN),
   );
 }
 
