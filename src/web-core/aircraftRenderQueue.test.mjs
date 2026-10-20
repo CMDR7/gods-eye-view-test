@@ -107,6 +107,23 @@ test('aircraft rendering stops between batches when its request becomes stale', 
   assert.equal(collection.suspended, false);
 });
 
+test('invalid records do not count against the rendered total', async () => {
+  const collection = createCollection();
+  const count = await renderAircraftInBatches({
+    collection,
+    aircraft: [1, 2, 3],
+    renderItem(item) {
+      if (item === 2) return false;
+      collection.recordAdd();
+      return true;
+    },
+    yieldControl: async () => {},
+  });
+
+  assert.equal(count, 2);
+  assert.deepEqual(collection.batchSizes, [2]);
+});
+
 test('aircraft collection events resume when rendering fails', async () => {
   const collection = createCollection();
 
