@@ -225,7 +225,10 @@ async function loadAircraft(classification, layerId) {
       renderItem(aircraft) {
         const lon = aircraft.position.longitude;
         const lat = aircraft.position.latitude;
-        if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
+        if (
+          !Number.isFinite(lon) || lon < -180 || lon > 180 ||
+          !Number.isFinite(lat) || lat < -90 || lat > 90
+        ) return false;
         const altitude = aircraft.position.altitudeBarometricM ?? aircraft.position.altitudeGeometricM ?? 500;
         const callsign = aircraft.identity.callsign || aircraft.identity.icaoHex || 'AIR';
         const entity = addPoint(layer, lon, lat, altitude, callsign, color, 6, {
@@ -241,6 +244,7 @@ async function loadAircraft(classification, layerId) {
           environment: aircraft.environment,
         });
         attachAircraftMotion(entity);
+        return true;
       },
     });
   } catch (error) {
