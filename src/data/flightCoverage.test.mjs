@@ -13,10 +13,7 @@ test('viewport footprint drives a larger radius as the visible ground expands', 
   const closeFootprint = [{ latitude: 0.1, longitude: 0 }];
   const wideFootprint = [{ latitude: 1, longitude: 0 }];
 
-  const closeRadius = autoFlightCoverageRadiusNm(
-    focalPoint,
-    closeFootprint,
-  );
+  const closeRadius = autoFlightCoverageRadiusNm(focalPoint, closeFootprint);
   const wideRadius = autoFlightCoverageRadiusNm(focalPoint, wideFootprint);
 
   assert.ok(closeRadius >= FLIGHT_COVERAGE_MIN_RADIUS_NM);
