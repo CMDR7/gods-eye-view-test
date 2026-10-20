@@ -1054,5 +1054,6 @@
   "src/tooling/webAppIcons.test.mjs",
   "src/ui/flyToDataSource.js",
   "src/ui/flyToDataSource.test.mjs",
-  "src/web-core/aircraftRenderQueue.test.mjs"
+  "src/web-core/aircraftRenderQueue.test.mjs",
+  "src/web-core/aircraftProvider.test.mjs"
 ]
