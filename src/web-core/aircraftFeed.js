@@ -6,6 +6,15 @@ function finiteNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function validFocalPoint(point) {
+  return (
+    Number.isFinite(point?.latitude) &&
+    Math.abs(point.latitude) <= 90 &&
+    Number.isFinite(point?.longitude) &&
+    Math.abs(point.longitude) <= 180
+  );
+}
+
 /**
  * Parse the shared /api/flights OpenSky-compatible state-vector response and
  * keep only positioned contacts in the requested focal-point coverage circle.
@@ -20,10 +29,18 @@ export function selectWebCoreAircraft(
   if (!Array.isArray(payload?.states)) {
     throw new TypeError('Malformed /api/flights response: states missing');
   }
+  if (!validFocalPoint(focalPoint)) {
+    throw new TypeError('A valid focal point is required for aircraft coverage');
+  }
 
   const candidates = [];
   for (const row of payload.states) {
-    if (!Array.isArray(row) || row[0] == null || row[5] == null || row[6] == null)
+    if (
+      !Array.isArray(row) ||
+      row[0] == null ||
+      row[5] == null ||
+      row[6] == null
+    )
       continue;
 
     const hex = String(row[0]).trim().toLowerCase();
@@ -54,8 +71,8 @@ export function selectWebCoreAircraft(
     ? Math.max(0, Math.floor(Number(maxRows)))
     : 100;
   return filterFlightsToCoverage(candidates, {
-    latitude: focalPoint?.latitude,
-    longitude: focalPoint?.longitude,
+    latitude: focalPoint.latitude,
+    longitude: focalPoint.longitude,
     radiusNm,
   }).slice(0, limit);
 }
