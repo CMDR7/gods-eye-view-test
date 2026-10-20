@@ -8,8 +8,9 @@ import './style.css';
 const REFRESH_MS = 60_000;
 const SATELLITE_REFRESH_MS = 2 * 60 * 60 * 1000;
 const MAX_SATELLITES = 1500;
-const MAX_AIRCRAFT = 300;
-const AIRCRAFT_BATCH_SIZE = 20;
+const AIRCRAFT_RADIUS_NM = 75;
+const MAX_AIRCRAFT = 100;
+const AIRCRAFT_BATCH_SIZE = 10;
 const ION_TERRAIN_TIMEOUT_MS = 15_000;
 const DRAWER_TRANSITION_MS = 320;
 const DEFAULT_NAV_ALTITUDE = 15_000;
@@ -73,18 +74,19 @@ function addPoint(layer, lon, lat, height, label, color, pixelSize = 7, metadata
       outlineWidth: 1,
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
     },
-    label: label
-      ? {
-          text: label,
-          font: '11px monospace',
-          fillColor: color,
-          showBackground: true,
-          backgroundColor: Cesium.Color.BLACK.withAlpha(0.72),
-          pixelOffset: new Cesium.Cartesian2(9, 0),
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          show: false,
-        }
-      : undefined,
+    label:
+      label && metadata.type !== 'AIRCRAFT'
+        ? {
+            text: label,
+            font: '11px monospace',
+            fillColor: color,
+            showBackground: true,
+            backgroundColor: Cesium.Color.BLACK.withAlpha(0.72),
+            pixelOffset: new Cesium.Cartesian2(9, 0),
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            show: false,
+          }
+        : undefined,
   });
 
   entity.gevMeta = {
@@ -193,7 +195,7 @@ async function loadAircraft() {
   const camera = state.viewer.camera.positionCartographic;
   const lat = Cesium.Math.toDegrees(camera.latitude);
   const lon = Cesium.Math.toDegrees(camera.longitude);
-  const data = await fetchJson(`https://api.adsb.lol/v2/point/${lat.toFixed(4)}/${lon.toFixed(4)}/250`);
+  const data = await fetchJson(`https://api.adsb.lol/v2/point/${lat.toFixed(4)}/${lon.toFixed(4)}/${AIRCRAFT_RADIUS_NM}`);
   const updated = new Date().toISOString();
   const aircraft = data.ac ?? [];
   const renderCount = Math.min(aircraft.length, MAX_AIRCRAFT);
