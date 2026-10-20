@@ -33,6 +33,7 @@ export async function renderAircraftInBatches({
 
   const admitted = aircraft.slice(0, MAX_AIRCRAFT_RENDER_COUNT);
   let rendered = 0;
+  let processed = 0;
 
   for (
     let offset = 0;
@@ -49,12 +50,13 @@ export async function renderAircraftInBatches({
     try {
       for (let index = offset; index < end; index += 1) {
         if (renderItem(admitted[index], index) !== false) rendered += 1;
+        processed += 1;
       }
     } finally {
       collection.resumeEvents();
     }
 
-    if (rendered === end && end < admitted.length) {
+    if (processed === end && end < admitted.length) {
       await yieldControl();
     }
   }
