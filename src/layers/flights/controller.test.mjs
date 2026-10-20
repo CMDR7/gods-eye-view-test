@@ -13,15 +13,16 @@ function queryFor(viewer) {
   })._flightQuery(viewer);
 }
 
-function expectedQuery(position) {
+function expectedQuery(position, radiusNm = 10) {
   const cartographic = Cesium.Cartographic.fromCartesian(position);
   return {
     latitude: Cesium.Math.toDegrees(cartographic.latitude),
     longitude: Cesium.Math.toDegrees(cartographic.longitude),
+    radiusNm,
   };
 }
 
-test('center globe pick determines query location', () => {
+test('center globe pick determines focal point and viewport coverage radius', () => {
   const position = Cesium.Cartesian3.fromDegrees(8.6, 50.1, 0);
   const viewer = {
     canvas: { clientWidth: 800, clientHeight: 600 },
@@ -29,17 +30,16 @@ test('center globe pick determines query location', () => {
       globe: {
         ellipsoid: Cesium.Ellipsoid.WGS84,
         pick: (ray) => {
-          assert.deepEqual(ray, { source: 'view-center' });
+          if (ray.source === 'view-center')
+            assert.deepEqual(ray, { source: 'view-center' });
           return position;
         },
       },
     },
     camera: {
-      getPickRay: (point) => {
-        assert.equal(point.x, 400);
-        assert.equal(point.y, 300);
-        return { source: 'view-center' };
-      },
+      getPickRay: (point) => ({
+        source: point.x === 400 && point.y === 300 ? 'view-center' : 'edge',
+      }),
       pickEllipsoid: () => assert.fail('unexpected fallback'),
     },
   };
@@ -58,10 +58,8 @@ test('ellipsoid fallback is used when globe picking misses', () => {
       },
     },
     camera: {
-      getPickRay: () => ({ source: 'view-center' }),
+      getPickRay: () => ({ source: 'view' }),
       pickEllipsoid: (point, ellipsoid) => {
-        assert.equal(point.x, 195);
-        assert.equal(point.y, 422);
         assert.equal(ellipsoid, Cesium.Ellipsoid.WGS84);
         return position;
       },
@@ -82,7 +80,7 @@ test('no coordinates returned when the view center misses the globe', () => {
       },
     },
     camera: {
-      getPickRay: () => ({ source: 'view-center' }),
+      getPickRay: () => ({ source: 'view' }),
       pickEllipsoid: () => undefined,
       positionCartographic: cameraPosition,
     },

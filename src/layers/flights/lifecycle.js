@@ -18,6 +18,31 @@ export function createLifecycle({
   const { holdContinuousRender, releaseContinuousRender } = services.render;
   const { ensureGeoidReady } = services.geoid;
   const { registerPickOwner, unregisterPickOwner } = services.picking;
+  let coverageRefreshTimer = null;
+
+  function clearCoverageRefresh() {
+    if (coverageRefreshTimer !== null) clearTimeout(coverageRefreshTimer);
+    coverageRefreshTimer = null;
+  }
+
+  function scheduleCoverageRefresh(viewer) {
+    clearCoverageRefresh();
+    coverageRefreshTimer = setTimeout(() => {
+      coverageRefreshTimer = null;
+      if (
+        flightState.lifetime.signal.aborted ||
+        flightState._viewer !== viewer ||
+        flightState._billboardCollection?.show === false
+      )
+        return;
+      const update = parts.ingestion?.methods?.update;
+      if (typeof update !== 'function') return;
+      void update(viewer).catch((error) => {
+        if (error?.name !== 'AbortError')
+          console.warn('[Data:Flights] Viewport refresh failed:', error);
+      });
+    }, 450);
+  }
 
   const methods = {
     /** Configure the source before initialization; an active layer keeps its owner. */
@@ -186,6 +211,9 @@ export function createLifecycle({
           () => {
             flightState._lastCamPoseSig = '';
             flightState._lastFleetTickMs = 0;
+            // Recompute the ground footprint only after the camera settles.
+            // Debouncing avoids one feed request per step of a pinch/zoom.
+            scheduleCoverageRefresh(viewer);
           },
         );
       }
@@ -198,6 +226,7 @@ export function createLifecycle({
      * @param {Cesium.Viewer} viewer
      */
     disable(viewer) {
+      clearCoverageRefresh();
       parts.controller._abortActiveUpdates();
       parts.tracking._cancelPendingTrackingRestore();
       if (flightState._billboardCollection)
@@ -240,6 +269,7 @@ export function createLifecycle({
      * @param {Cesium.Viewer} viewer
      */
     destroy(viewer) {
+      clearCoverageRefresh();
       flightState.lifetime.abort();
       flightState._enrichActive = 0;
       flightState._enrichLastDispatchMs = 0;

@@ -5,6 +5,7 @@ import {
   readResponseTextCapped,
 } from '../common/http.js';
 import { requiredFiniteQueryNumber } from '../common/query.js';
+import { clampFlightCoverageRadiusNm } from '../../../src/data/flightCoverage.js';
 // ---------------------------------------------------------------------------
 // OpenSky OAuth2 token + response cache state
 // ---------------------------------------------------------------------------
@@ -132,7 +133,7 @@ let _openskyAuthModeWarned = false;
 const OPENSKY_AUTH_MODE_DEFAULT = 'oauth';
 /** Set of valid OPENSKY_AUTH_MODE values. */
 const OPENSKY_AUTH_MODE_SET = new Set(['basic', 'oauth', 'auto', 'anon']);
-/** Regional civilian fallback cache, keyed by a coarse 0.25° view anchor. */
+/** Regional civilian fallback cache, keyed by a 0.05° view anchor and radius. */
 const _adsbLolPointCache = new Map();
 /** Per-anchor single-flight map for concurrent regional fallback requests. */
 const _adsbLolPointInFlight = new Map();
@@ -302,15 +303,37 @@ export function adsbLolFallbackAnchor(req) {
     return null;
   if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180)
     return null;
-  return { latitude, longitude };
+  const radiusParameter = incoming.searchParams.get('radius_nm');
+  const requestedRadiusNm =
+    radiusParameter == null || radiusParameter.trim() === ''
+      ? ADSBLOL_POINT_RADIUS_NM
+      : radiusParameter;
+  return {
+    latitude,
+    longitude,
+    radiusNm: clampFlightCoverageRadiusNm(
+      requestedRadiusNm,
+      ADSBLOL_POINT_RADIUS_NM,
+    ),
+  };
+}
+
+export function adsbLolFallbackCacheKey(anchor) {
+  const roundedLat = Math.round(anchor.latitude * 20) / 20;
+  const roundedLon = Math.round(anchor.longitude * 20) / 20;
+  const radiusNm = clampFlightCoverageRadiusNm(
+    anchor.radiusNm,
+    ADSBLOL_POINT_RADIUS_NM,
+  );
+  return `${roundedLat.toFixed(2)},${roundedLon.toFixed(2)},${radiusNm}nm`;
 }
 
 async function fetchAdsbLolPointFallback(req) {
   const anchor = adsbLolFallbackAnchor(req);
   if (!anchor) return null;
-  const roundedLat = Math.round(anchor.latitude * 4) / 4;
-  const roundedLon = Math.round(anchor.longitude * 4) / 4;
-  const cacheKey = `${roundedLat.toFixed(2)},${roundedLon.toFixed(2)}`;
+  const roundedLat = Math.round(anchor.latitude * 20) / 20;
+  const roundedLon = Math.round(anchor.longitude * 20) / 20;
+  const cacheKey = adsbLolFallbackCacheKey(anchor);
   const cached = _adsbLolPointCache.get(cacheKey);
   const now = Date.now();
   if (cached && now - cached.cachedAt < ADSBLOL_POINT_CACHE_MS) {
@@ -325,7 +348,7 @@ async function fetchAdsbLolPointFallback(req) {
       const timeoutId = setTimeout(() => controller.abort(), 10000);
       try {
         const upstream = await fetch(
-          `https://api.adsb.lol/v2/lat/${roundedLat}/lon/${roundedLon}/dist/${ADSBLOL_POINT_RADIUS_NM}`,
+          `https://api.adsb.lol/v2/lat/${roundedLat}/lon/${roundedLon}/dist/${anchor.radiusNm}`,
           {
             headers: {
               Accept: 'application/json',
@@ -344,6 +367,7 @@ async function fetchAdsbLolPointFallback(req) {
           body: JSON.stringify(normalized),
           cachedAt: Date.now(),
           count: normalized.states.length,
+          radiusNm: anchor.radiusNm,
         };
         _adsbLolPointCache.delete(cacheKey);
         _adsbLolPointCache.set(cacheKey, record);
@@ -378,7 +402,7 @@ async function serveAdsbLolPointFallback(req, res, requestedMode, reason) {
       reason,
     }),
     'X-Flight-Source': 'adsb.lol',
-    'X-Flight-Coverage': `${ADSBLOL_POINT_RADIUS_NM}nm regional fallback`,
+    'X-Flight-Coverage': `${fallback.radiusNm}nm regional fallback`,
     'X-Flight-Count': String(fallback.count),
   });
   res.end(fallback.body);
