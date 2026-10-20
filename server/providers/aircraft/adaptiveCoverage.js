@@ -29,7 +29,10 @@ function angularDistanceNm(latitudeA, longitudeA, latitudeB, longitudeB) {
   const sinLon = Math.sin(deltaLon / 2);
   const a =
     sinLat * sinLat + Math.cos(latA) * Math.cos(latB) * sinLon * sinLon;
-  const angular = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
+  const angular = 2 * Math.atan2(
+    Math.sqrt(a),
+    Math.sqrt(Math.max(0, 1 - a)),
+  );
   return (angular * EARTH_RADIUS_M) / METERS_PER_NAUTICAL_MILE;
 }
 
