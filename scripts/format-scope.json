@@ -1054,5 +1054,9 @@
   "scripts/generate-icons.mjs",
   "src/tooling/webAppIcons.test.mjs",
   "src/ui/flyToDataSource.js",
-  "src/ui/flyToDataSource.test.mjs"
+  "src/ui/flyToDataSource.test.mjs",
+  "src/data/flightCoverage.js",
+  "src/data/flightCoverage.test.mjs",
+  "src/sources/live/standalone.test.mjs",
+  "server/providers/aircraft/opensky.test.mjs"
 ]
