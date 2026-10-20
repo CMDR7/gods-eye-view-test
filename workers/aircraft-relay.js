@@ -58,6 +58,12 @@ function filterAircraft(records, mode, lat, lon, radius) {
   });
 }
 
+export function selectSuccessfulResult(results) {
+  return results.find((result) => result.ok && result.aircraft?.length > 0)
+    || results.find((result) => result.ok)
+    || null;
+}
+
 export default {
   async fetch(request) {
     if (request.method === 'OPTIONS') {
@@ -130,7 +136,7 @@ export default {
       }
     }));
 
-    const successful = results.find(result => result.ok);
+    const successful = selectSuccessfulResult(results);
     if (successful) {
       return json({
         ...successful.payload,
