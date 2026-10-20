@@ -39,7 +39,10 @@ export function clampFlightCoverageRadiusNm(
   );
 }
 
-/** Great-circle distance between { latitude, longitude } points in nautical miles. */
+/**
+ * Great-circle distance between { latitude, longitude } points in nautical
+ * miles.
+ */
 export function flightDistanceNm(origin, destination) {
   if (!validCoordinate(origin) || !validCoordinate(destination))
     return Infinity;
@@ -91,7 +94,10 @@ export function autoFlightCoverageRadiusNm(focalPoint, boundaryPoints = []) {
   );
 }
 
-/** Keep only positioned aircraft inside the current focal-point coverage circle. */
+/**
+ * Keep only positioned aircraft inside the current focal-point coverage
+ * circle.
+ */
 export function filterFlightsToCoverage(records, query) {
   if (
     !Array.isArray(records) ||
