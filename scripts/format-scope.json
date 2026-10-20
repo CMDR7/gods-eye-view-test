@@ -1058,5 +1058,6 @@
   "src/data/flightCoverage.js",
   "src/data/flightCoverage.test.mjs",
   "src/sources/live/standalone.test.mjs",
-  "server/providers/aircraft/opensky.test.mjs"
+  "server/providers/aircraft/opensky.test.mjs",
+  "src/web-core/aircraftFeed.test.mjs"
 ]
