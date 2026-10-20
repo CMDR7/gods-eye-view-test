@@ -120,6 +120,13 @@ export async function formatAdoptedFiles(root, mode) {
   }
 
   const changed = files.filter(({ source, formatted }) => source !== formatted);
+  if (mode === '--check') {
+    for (const { name, formatted } of changed) {
+      console.error(`--- FORMATTED ${name} ---`);
+      console.error(formatted);
+      console.error(`--- END FORMATTED ${name} ---`);
+    }
+  }
   if (mode === '--write') {
     for (const { file, formatted } of changed) await writeFile(file, formatted);
   }
