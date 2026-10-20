@@ -12,6 +12,10 @@ import {
   readsbIdentities,
 } from './aircraft.js';
 import { normalizeVesselTrack, vesselSnapshot } from './vessels.js';
+import {
+  clampFlightCoverageRadiusNm,
+  filterFlightsToCoverage,
+} from '../../data/flightCoverage.js';
 
 const defaultFetch = (...args) => globalThis.fetch(...args);
 const header = (response, name) => response.headers?.get?.(name);
@@ -69,9 +73,16 @@ export function createFlightSource({
     label: 'Flights',
     async getSnapshot(query = {}, { signal } = {}) {
       const params = new URLSearchParams();
-      if (Number.isFinite(query.latitude) && Number.isFinite(query.longitude)) {
+      const hasFocalPoint =
+        Number.isFinite(query.latitude) && Number.isFinite(query.longitude);
+      const radiusNm =
+        hasFocalPoint && Number.isFinite(query.radiusNm)
+          ? clampFlightCoverageRadiusNm(query.radiusNm)
+          : null;
+      if (hasFocalPoint) {
         params.set('lat', query.latitude.toFixed(4));
         params.set('lon', query.longitude.toFixed(4));
+        if (radiusNm != null) params.set('radius_nm', String(radiusNm));
       }
       const { response, payload } = await readResponse(
         fetchImpl,
@@ -80,17 +91,34 @@ export function createFlightSource({
         'Flights',
       );
       if (!response.ok) throw openSkyError(response);
+      const snapshot = openSkySnapshot(payload, {
+        // A fallback provider names itself in X-Flight-Source.
+        source:
+          header(response, 'x-flight-source') ||
+          feedSource(response, 'Flights'),
+        coverage:
+          header(response, 'x-flight-coverage') ||
+          'worldwide upstream snapshot',
+        now: now(),
+      });
+      // OpenSky normally returns a worldwide snapshot. Apply the same
+      // focal-point circle client-side so primary and fallback providers share
+      // one display policy; the regional fallback also uses radius_nm upstream.
+      const records =
+        radiusNm == null
+          ? snapshot.records
+          : filterFlightsToCoverage(snapshot.records, {
+              latitude: query.latitude,
+              longitude: query.longitude,
+              radiusNm,
+            });
       return {
-        ...openSkySnapshot(payload, {
-          // A fallback provider names itself in X-Flight-Source.
-          source:
-            header(response, 'x-flight-source') ||
-            feedSource(response, 'Flights'),
-          coverage:
-            header(response, 'x-flight-coverage') ||
-            'worldwide upstream snapshot',
-          now: now(),
-        }),
+        ...snapshot,
+        records,
+        coverage:
+          radiusNm == null
+            ? snapshot.coverage
+            : `${radiusNm}nm focal-point coverage`,
         status: response.status,
       };
     },
