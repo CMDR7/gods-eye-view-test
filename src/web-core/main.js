@@ -1,6 +1,7 @@
 import * as Cesium from 'cesium';
 import * as satellite from 'satellite.js';
 import { createOsmImagery } from '../maps/imagery.js';
+import { selectWebCoreAircraft } from './aircraftFeed.js';
 import {
   applyStoredIonToken,
   clearIonToken,
@@ -245,29 +246,57 @@ async function loadEarthquakes() {
 
 async function loadAircraft() {
   const layer = state.layers.get('aircraft');
-  clearLayer('aircraft');
-  const camera = state.viewer.camera.positionCartographic;
-  const lat = Cesium.Math.toDegrees(camera.latitude);
-  const lon = Cesium.Math.toDegrees(camera.longitude);
-  const data = await fetchJson(
-    `https://api.adsb.lol/v2/point/${lat.toFixed(4)}/${lon.toFixed(4)}/${AIRCRAFT_RADIUS_NM}`,
-  );
-  const updated = new Date().toISOString();
-  const aircraft = data.ac ?? [];
-  const renderCount = Math.min(aircraft.length, MAX_AIRCRAFT);
+  const camera = state.viewer?.camera?.positionCartographic;
+  if (
+    !Number.isFinite(camera?.latitude) ||
+    !Number.isFinite(camera?.longitude)
+  ) {
+    throw new Error('Camera position unavailable');
+  }
 
+  const latitude = Cesium.Math.toDegrees(camera.latitude);
+  const longitude = Cesium.Math.toDegrees(camera.longitude);
+  const params = new URLSearchParams({
+    lat: latitude.toFixed(4),
+    lon: longitude.toFixed(4),
+    radius_nm: String(AIRCRAFT_RADIUS_NM),
+  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 12_000);
+  let payload;
+  try {
+    // Use the application's same-origin proxy instead of depending on direct
+    // browser access to api.adsb.lol (which can fail under browser/PWA CORS).
+    payload = await fetchJson(`/api/flights?${params.toString()}`, {
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (controller.signal.aborted)
+      throw new Error('Flight request timed out after 12 s');
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  const aircraft = selectWebCoreAircraft(
+    payload,
+    { latitude, longitude },
+    { radiusNm: AIRCRAFT_RADIUS_NM, maxRows: MAX_AIRCRAFT },
+  );
+  // Replace the previous snapshot only after a valid response has arrived.
+  clearLayer('aircraft');
+
+  const updated = new Date().toISOString();
+  const renderCount = aircraft.length;
   for (let index = 0; index < renderCount; index += 1) {
     const ac = aircraft[index];
-    const aLon = Number(ac.lon);
-    const aLat = Number(ac.lat);
-    if (!Number.isFinite(aLon) || !Number.isFinite(aLat)) continue;
-    const altitude = Number(ac.alt_baro);
-    const callsign = ac.flight?.trim() || ac.hex || 'AIR';
+    const callsign = ac.flight || ac.hex || 'AIR';
     addPoint(
       layer,
-      aLon,
-      aLat,
-      Number.isFinite(altitude) ? altitude * 0.3048 : 500,
+      ac.longitude,
+      ac.latitude,
+      ac.altitudeM,
       callsign,
       Cesium.Color.CYAN,
       6,
@@ -275,24 +304,26 @@ async function loadAircraft() {
         type: 'AIRCRAFT',
         name: callsign,
         id: ac.hex || callsign,
-        source: 'ADSB.LOL',
+        source: 'GEV /api/flights',
         updated,
-        altitude: Number.isFinite(altitude) ? altitude * 0.3048 : 500,
+        altitude: ac.altitudeM,
         callsign,
         hex: ac.hex || 'UNKNOWN',
         squawk: ac.squawk || '—',
-        registration: ac.r || ac.reg || '—',
-        category: ac.category || '—',
+        registration: '—',
+        category: ac.category == null ? '—' : String(ac.category),
       },
     );
 
-    if ((index + 1) % AIRCRAFT_BATCH_SIZE === 0 && index + 1 < renderCount)
+    if (
+      (index + 1) % AIRCRAFT_BATCH_SIZE === 0 &&
+      index + 1 < renderCount
+    )
       await yieldToRenderLoop();
   }
 
   return renderCount;
 }
-
 async function loadSatellites() {
   const layer = state.layers.get('satellites');
   clearLayer('satellites');
@@ -397,13 +428,15 @@ async function refreshLayer(id, loader) {
     setStatus(`${state.layers.get(id).name}: ${count} objects`, 'ok');
   } catch (error) {
     console.warn(`[GEV] ${id} unavailable`, error);
+    const detail = String(error?.message || error || 'request failed')
+      .replace(/\s+/g, ' ')
+      .slice(0, 72);
     setStatus(
-      `${state.layers.get(id).name}: unavailable from this browser`,
+      `${state.layers.get(id).name}: unavailable · ${detail}`,
       'warn',
     );
   }
 }
-
 function schedule(id, loader, interval) {
   const previous = state.timers.get(id);
   if (previous) clearInterval(previous);
