@@ -11,38 +11,39 @@ import {
 test(
   'viewport footprint drives a larger radius as the visible ground expands',
   () => {
-  const focalPoint = { latitude: 0, longitude: 0 };
-  const closeFootprint = [{ latitude: 0.1, longitude: 0 }];
-  const wideFootprint = [{ latitude: 1, longitude: 0 }];
+    const focalPoint = { latitude: 0, longitude: 0 };
+    const closeFootprint = [{ latitude: 0.1, longitude: 0 }];
+    const wideFootprint = [{ latitude: 1, longitude: 0 }];
 
-  const closeRadius = autoFlightCoverageRadiusNm(focalPoint, closeFootprint);
-  const wideRadius = autoFlightCoverageRadiusNm(focalPoint, wideFootprint);
+    const closeRadius = autoFlightCoverageRadiusNm(focalPoint, closeFootprint);
+    const wideRadius = autoFlightCoverageRadiusNm(focalPoint, wideFootprint);
 
-  assert.ok(closeRadius >= FLIGHT_COVERAGE_MIN_RADIUS_NM);
-  assert.ok(wideRadius > closeRadius);
-  assert.ok(wideRadius < FLIGHT_COVERAGE_MAX_RADIUS_NM);
-});
+    assert.ok(closeRadius >= FLIGHT_COVERAGE_MIN_RADIUS_NM);
+    assert.ok(wideRadius > closeRadius);
+    assert.ok(wideRadius < FLIGHT_COVERAGE_MAX_RADIUS_NM);
+  },
+);
 
 test(
   'coverage radius is capped when the visible footprint exceeds provider range',
   () => {
-  assert.equal(
-    autoFlightCoverageRadiusNm(
-      { latitude: 0, longitude: 0 },
-      [{ latitude: 20, longitude: 0 }],
-    ),
-    FLIGHT_COVERAGE_MAX_RADIUS_NM,
-  );
+    assert.equal(
+      autoFlightCoverageRadiusNm(
+        { latitude: 0, longitude: 0 },
+        [{ latitude: 20, longitude: 0 }],
+      ),
+      FLIGHT_COVERAGE_MAX_RADIUS_NM,
+    );
   },
 );
 
 test(
   'coverage defaults conservatively when the viewport boundary misses the globe',
   () => {
-  assert.equal(
-    autoFlightCoverageRadiusNm({ latitude: 0, longitude: 0 }, []),
-    FLIGHT_COVERAGE_MAX_RADIUS_NM,
-  );
+    assert.equal(
+      autoFlightCoverageRadiusNm({ latitude: 0, longitude: 0 }, []),
+      FLIGHT_COVERAGE_MAX_RADIUS_NM,
+    );
   },
 );
 
