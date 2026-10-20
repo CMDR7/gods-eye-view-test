@@ -98,15 +98,23 @@ test('sun and moon bearings are independent rather than forced opposite', () => 
   assert.notEqual(normalizeAngle(moon - sun), Math.PI);
 });
 
-test('shared keyhole geometry is centered and height-derived', () => {
+test('shared keyhole geometry preserves wide layout and caps portrait width', () => {
   const landscape = getKeyholeGeometry(1200, 800);
-  const portrait = getKeyholeGeometry(800, 1200);
+  const portraitTablet = getKeyholeGeometry(800, 1200);
+  const portraitPhone = getKeyholeGeometry(390, 844);
+
   assert.equal(landscape.centerX, 600);
   assert.equal(landscape.centerY, 400);
   assert.equal(landscape.radius, 420);
-  assert.equal(portrait.centerX, 400);
-  assert.equal(portrait.centerY, 600);
-  assert.equal(portrait.radius, 630);
+
+  assert.equal(portraitTablet.centerX, 400);
+  assert.equal(portraitTablet.centerY, 600);
+  assert.equal(portraitTablet.radius, 368);
+  assert.equal(portraitPhone.centerX, 195);
+  assert.equal(portraitPhone.centerY, 422);
+  assert.equal(portraitPhone.radius, 390 * 0.46);
+  assert.ok(portraitPhone.radius < 844 * 0.5 * 1.05);
+  assert.ok(portraitPhone.radius < portraitPhone.centerX);
 });
 
 test('label alpha stays opaque inside and fades monotonically outside', () => {

@@ -3,6 +3,8 @@ import { governorRequestRender } from './renderGovernor.js';
 
 /** Outer edge of the existing NVG/FLIR keyhole in normalized shader space. */
 export const KEYHOLE_OUTER_RADIUS = 1.05;
+/** Keep a visible side margin on portrait/square mobile viewports. */
+const KEYHOLE_PORTRAIT_WIDTH_RATIO = 0.46;
 /** Clearance required before entering the visible state. */
 export const GLOBE_ENTER_CLEARANCE_PX = 24;
 /** Clearance below which the overlay leaves the visible state. */
@@ -75,7 +77,12 @@ export function getKeyholeGeometry(width, height) {
   if (!(w > 0) || !(h > 0)) {
     return { centerX: 0, centerY: 0, radius: 0, featherPx: 0 };
   }
-  const radius = h * 0.5 * KEYHOLE_OUTER_RADIUS;
+  // Preserve the original height-derived circle on wide screens, but cap
+  // the radius by width on portrait/square screens so the aperture stays visible.
+  const radius = Math.min(
+    h * 0.5 * KEYHOLE_OUTER_RADIUS,
+    w * KEYHOLE_PORTRAIT_WIDTH_RATIO,
+  );
   return {
     centerX: w * 0.5,
     centerY: h * 0.5,
