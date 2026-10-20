@@ -8,7 +8,9 @@ import {
   FLIGHT_COVERAGE_MIN_RADIUS_NM,
 } from './flightCoverage.js';
 
-test('viewport footprint drives a larger radius as the visible ground expands', () => {
+test(
+  'viewport footprint drives a larger radius as the visible ground expands',
+  () => {
   const focalPoint = { latitude: 0, longitude: 0 };
   const closeFootprint = [{ latitude: 0.1, longitude: 0 }];
   const wideFootprint = [{ latitude: 1, longitude: 0 }];
@@ -21,7 +23,9 @@ test('viewport footprint drives a larger radius as the visible ground expands', 
   assert.ok(wideRadius < FLIGHT_COVERAGE_MAX_RADIUS_NM);
 });
 
-test('coverage radius is capped when the visible footprint exceeds provider range', () => {
+test(
+  'coverage radius is capped when the visible footprint exceeds provider range',
+  () => {
   assert.equal(
     autoFlightCoverageRadiusNm(
       { latitude: 0, longitude: 0 },
@@ -31,7 +35,9 @@ test('coverage radius is capped when the visible footprint exceeds provider rang
   );
 });
 
-test('coverage defaults conservatively when the viewport boundary misses the globe', () => {
+test(
+  'coverage defaults conservatively when the viewport boundary misses the globe',
+  () => {
   assert.equal(
     autoFlightCoverageRadiusNm({ latitude: 0, longitude: 0 }, []),
     FLIGHT_COVERAGE_MAX_RADIUS_NM,
