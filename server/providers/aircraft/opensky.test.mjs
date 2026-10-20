@@ -9,7 +9,9 @@ function request(query = '') {
   return { url: `/api/flights${query}` };
 }
 
-test('regional fallback defaults to the provider maximum when radius is omitted', () => {
+test(
+  'regional fallback defaults to the provider maximum when radius is omitted',
+  () => {
   assert.deepEqual(adsbLolFallbackAnchor(request('?lat=50&lon=8')), {
     latitude: 50,
     longitude: 8,
