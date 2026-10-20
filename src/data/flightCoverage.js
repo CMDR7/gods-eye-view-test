@@ -22,7 +22,10 @@ function validCoordinate(point) {
   );
 }
 
-export function clampFlightCoverageRadiusNm(value, fallback = FLIGHT_COVERAGE_MAX_RADIUS_NM) {
+export function clampFlightCoverageRadiusNm(
+  value,
+  fallback = FLIGHT_COVERAGE_MAX_RADIUS_NM,
+) {
   const parsed =
     value === null || value === undefined || value === ''
       ? NaN
