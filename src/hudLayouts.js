@@ -23,7 +23,7 @@ export function isHudLayout(value) {
 /** @param {unknown} value */
 export function normalizeHudLayout(value) {
   const normalized = String(value ?? '').toLowerCase();
-  return isHudLayout(normalized) ? normalized : DEFAULT_HUD_LAYOUT;
+  return isHudLayout(normalized) ? normalized : 'tactical';
 }
 
 /**
