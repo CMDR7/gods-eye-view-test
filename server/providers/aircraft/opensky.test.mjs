@@ -12,12 +12,13 @@ function request(query = '') {
 test(
   'regional fallback defaults to the provider maximum when radius is omitted',
   () => {
-  assert.deepEqual(adsbLolFallbackAnchor(request('?lat=50&lon=8')), {
-    latitude: 50,
-    longitude: 8,
-    radiusNm: 250,
-  });
-});
+    assert.deepEqual(adsbLolFallbackAnchor(request('?lat=50&lon=8')), {
+      latitude: 50,
+      longitude: 8,
+      radiusNm: 250,
+    });
+  },
+);
 
 test('regional fallback parses and bounds the requested radius', () => {
   assert.deepEqual(
