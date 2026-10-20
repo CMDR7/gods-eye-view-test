@@ -11,8 +11,24 @@ const vector = ({
   squawk = '7000',
   category = 4,
 } = {}) => [
-  hex, callsign, null, 0, 0, lon, lat, altitudeM, false, null, null, null,
-  null, null, squawk, false, 0, category,
+  hex,
+  callsign,
+  null,
+  0,
+  0,
+  lon,
+  lat,
+  altitudeM,
+  false,
+  null,
+  null,
+  null,
+  null,
+  null,
+  squawk,
+  false,
+  0,
+  category,
 ];
 
 test('Web Core accepts positioned OpenSky-compatible state vectors in coverage', () => {
@@ -43,12 +59,21 @@ test('Web Core drops missing/out-of-range positions and contacts outside coverag
     { radiusNm: 10 },
   );
 
-  assert.deepEqual(aircraft.map(({ hex }) => hex), ['abc123']);
+  assert.deepEqual(
+    aircraft.map(({ hex }) => hex),
+    ['abc123'],
+  );
 });
 
 test('Web Core enforces its render cap', () => {
   const aircraft = selectWebCoreAircraft(
-    { states: [vector(), vector({ hex: 'def456', lon: 8.01 }), vector({ hex: 'fedcba', lon: 7.99 })] },
+    {
+      states: [
+        vector(),
+        vector({ hex: 'def456', lon: 8.01 }),
+        vector({ hex: 'fedcba', lon: 7.99 }),
+      ],
+    },
     { latitude: 50, longitude: 8 },
     { radiusNm: 10, maxRows: 2 },
   );
@@ -60,5 +85,12 @@ test('Web Core rejects a malformed API response instead of silently reporting ze
   assert.throws(
     () => selectWebCoreAircraft({ ac: [] }, { latitude: 50, longitude: 8 }),
     /states missing/,
+  );
+});
+
+test('Web Core rejects an invalid focal point rather than disabling coverage filtering', () => {
+  assert.throws(
+    () => selectWebCoreAircraft({ states: [vector()] }, null),
+    /valid focal point/,
   );
 });
