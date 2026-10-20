@@ -33,7 +33,8 @@ test(
     ),
     FLIGHT_COVERAGE_MAX_RADIUS_NM,
   );
-});
+  },
+);
 
 test(
   'coverage defaults conservatively when the viewport boundary misses the globe',
@@ -42,7 +43,8 @@ test(
     autoFlightCoverageRadiusNm({ latitude: 0, longitude: 0 }, []),
     FLIGHT_COVERAGE_MAX_RADIUS_NM,
   );
-});
+  },
+);
 
 test('great-circle distance handles the antimeridian', () => {
   const distance = flightDistanceNm(
