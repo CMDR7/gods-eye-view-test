@@ -6,7 +6,7 @@ const SOURCES = [
 
 const MAX_RADIUS_NM = 250;
 const DEFAULT_RADIUS_NM = 100;
-const UPSTREAM_TIMEOUT_MS = 8000;
+const UPSTREAM_TIMEOUT_MS = 3500;
 const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 const ALLOWED_ORIGINS = '*';
 
@@ -28,7 +28,7 @@ async function fetchJson(url, source) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
   try {
-    const response = await fetch(url, { method: 'GET', headers: { Accept: 'application/json', 'User-Agent': 'gods-eye-view-aircraft-relay/1.1 (+https://github.com/CMDR7/gods-eye-view-test)' }, signal: controller.signal, cache: 'no-store' });
+    const response = await fetch(url, { method: 'GET', headers: { Accept: 'application/json', 'User-Agent': 'gods-eye-view-aircraft-relay/1.2 (+https://github.com/CMDR7/gods-eye-view-test)' }, signal: controller.signal, cache: 'no-store' });
     if (!response.ok) return { ok: false, source, status: response.status, error: `${source} returned HTTP ${response.status}` };
     return { ok: true, source, status: response.status, payload: await readJsonCapped(response) };
   } catch (error) {
@@ -80,7 +80,7 @@ export default {
     const url = new URL(request.url);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders() });
     if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405, { Allow: 'GET, OPTIONS' });
-    if (url.pathname === '/' || url.pathname === '/health') return json({ ok: true, service: 'gev-aircraft-relay', version: 'github-relay-v3', routes: ['/aircraft', '/api/flights', '/api/military'], civilianSources: SOURCES.map((source) => source.name), militarySource: 'ADSB.FI' });
+    if (url.pathname === '/' || url.pathname === '/health') return json({ ok: true, service: 'gev-aircraft-relay', version: 'github-relay-v4', routes: ['/aircraft', '/api/flights', '/api/military'], civilianSources: SOURCES.map((source) => source.name), militarySource: 'ADSB.FI' });
     if (url.pathname === '/aircraft') return handleAircraft(url);
     if (url.pathname === '/api/flights') return handleFlights(url);
     if (url.pathname === '/api/military') return handleMilitary();
