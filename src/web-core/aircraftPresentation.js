@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import './mobile-ui.css';
 
 const STYLE_ID = 'gev-aircraft-button-colors';
 const CIVILIAN = '#00eaff';
