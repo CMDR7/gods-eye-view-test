@@ -1,0 +1,4 @@
+# Cloudflare credentials are supplied to GitHub Actions as repository secrets.
+# Do not place real credentials in this file.
+CLOUDFLARE_API_TOKEN=
+CLOUDFLARE_ACCOUNT_ID=
