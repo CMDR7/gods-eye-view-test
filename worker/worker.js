@@ -8,6 +8,7 @@ const MAX_RADIUS_NM = 250;
 const DEFAULT_RADIUS_NM = 100;
 const UPSTREAM_TIMEOUT_MS = 3500;
 const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
+const MAX_CLIENT_AIRCRAFT = 100;
 const ALLOWED_ORIGINS = '*';
 
 function corsHeaders(contentType = 'application/json') {
@@ -17,6 +18,11 @@ function json(data, status = 200, extra = {}) { return new Response(JSON.stringi
 function finiteNumber(value) { if (value === null || value === undefined || value === '') return null; const number = Number(value); return Number.isFinite(number) ? number : null; }
 function clampRadius(value) { const number = finiteNumber(value); if (number === null) return DEFAULT_RADIUS_NM; return Math.min(MAX_RADIUS_NM, Math.max(1, number)); }
 function validCoordinate(value, min, max) { const number = finiteNumber(value); return number !== null && number >= min && number <= max ? number : null; }
+function clampClientLimit(value) { const number = finiteNumber(value); if (number === null) return null; return Math.min(MAX_CLIENT_AIRCRAFT, Math.max(1, Math.floor(number))); }
+function limitPayloadAircraft(payload, limit) {
+  if (limit === null || !Array.isArray(payload?.ac) || payload.ac.length <= limit) return payload;
+  return { ...payload, ac: payload.ac.slice(0, limit) };
+}
 async function readJsonCapped(response) {
   const contentLength = Number(response.headers.get('content-length'));
   if (Number.isFinite(contentLength) && contentLength > MAX_RESPONSE_BYTES) throw new Error(`upstream response too large: ${contentLength} bytes`);
@@ -49,17 +55,18 @@ async function handleAircraft(url) {
   const longitude = validCoordinate(url.searchParams.get('lon'), -180, 180);
   const mode = String(url.searchParams.get('mode') || 'civilian').toLowerCase();
   const radius = clampRadius(url.searchParams.get('radius'));
+  const clientLimit = clampClientLimit(url.searchParams.get('limit'));
   if (latitude === null || longitude === null) return json({ error: 'invalid lat/lon coordinates', source: 'relay' }, 400);
   if (mode === 'military') {
     const result = await fetchJson('https://opendata.adsb.fi/api/v2/mil', 'ADSB.FI // MILITARY');
     if (!result.ok) return json({ error: 'military aircraft upstream failed', source: result.source, upstreamStatus: result.status, diagnostics: [{ source: result.source, status: result.status, error: result.error }] }, result.status || 502);
-    return json({ ...result.payload, provider: result.source, classification: 'military', queriedAt: new Date().toISOString(), diagnostics: [{ source: result.source, status: result.status, ok: true }] }, 200, { 'X-Flight-Source': result.source, 'X-Flight-Coverage': `${radius}nm focal-point coverage` });
+    return json({ ...limitPayloadAircraft(result.payload, clientLimit), provider: result.source, classification: 'military', queriedAt: new Date().toISOString(), diagnostics: [{ source: result.source, status: result.status, ok: true }] }, 200, { 'X-Flight-Source': result.source, 'X-Flight-Coverage': `${radius}nm focal-point coverage` });
   }
   if (mode !== 'civilian') return json({ error: 'invalid aircraft mode; expected civilian or military', source: 'relay' }, 400);
   const sources = SOURCES.map((source) => ({ ...source, lat: latitude, lon: longitude, radius }));
   const result = await fetchFirstSuccessful(sources);
   if (!result.ok) return json({ error: 'all aircraft upstream sources failed', source: 'relay', classification: 'civilian', diagnostics: result.diagnostics }, 502);
-  return json({ ...result.payload, provider: result.source, classification: 'civilian', queriedAt: new Date().toISOString(), diagnostics: result.diagnostics }, 200, { 'X-Flight-Source': result.source, 'X-Feed-Source': result.source, 'X-Flight-Coverage': `${radius}nm focal-point coverage` });
+  return json({ ...limitPayloadAircraft(result.payload, clientLimit), provider: result.source, classification: 'civilian', queriedAt: new Date().toISOString(), diagnostics: result.diagnostics }, 200, { 'X-Flight-Source': result.source, 'X-Feed-Source': result.source, 'X-Flight-Coverage': `${radius}nm focal-point coverage` });
 }
 async function handleFlights(url) {
   const latitude = validCoordinate(url.searchParams.get('lat'), -90, 90);
@@ -80,7 +87,7 @@ export default {
     const url = new URL(request.url);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders() });
     if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405, { Allow: 'GET, OPTIONS' });
-    if (url.pathname === '/' || url.pathname === '/health') return json({ ok: true, service: 'gev-aircraft-relay', version: 'github-relay-v4', routes: ['/aircraft', '/api/flights', '/api/military'], civilianSources: SOURCES.map((source) => source.name), militarySource: 'ADSB.FI' });
+    if (url.pathname === '/' || url.pathname === '/health') return json({ ok: true, service: 'gev-aircraft-relay', version: 'github-relay-v5', routes: ['/aircraft', '/api/flights', '/api/military'], civilianSources: SOURCES.map((source) => source.name), militarySource: 'ADSB.FI' });
     if (url.pathname === '/aircraft') return handleAircraft(url);
     if (url.pathname === '/api/flights') return handleFlights(url);
     if (url.pathname === '/api/military') return handleMilitary();
