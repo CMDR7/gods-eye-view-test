@@ -6,6 +6,7 @@ const FEET_PER_MIN_TO_MPS = FEET_TO_METERS / 60;
 const EARTH_RADIUS_KM = 6371;
 const NM_TO_KM = 1.852;
 const MOBILE_NORMALIZATION_LIMIT = 60;
+const RELAY_REQUEST_TIMEOUT_MS = 10000;
 
 function finiteNumber(value) {
   const numeric = Number(value);
@@ -49,10 +50,6 @@ function getRelayBase() {
   }
 }
 
-/**
- * The configured GEV relay already fans out to browser-blocked providers.
- * A valid empty relay snapshot is still a successful acquisition result.
- */
 export function shouldAcceptAircraftResult(provider, aircraftCount, lastProvider) {
   return aircraftCount > 0 || provider === 'GEV RELAY' || provider === lastProvider;
 }
@@ -153,13 +150,20 @@ export function normalizeAircraft(raw, observedAt = new Date().toISOString(), cl
   };
 }
 
-async function requestAircraftPayload(url) {
-  const response = await fetch(url, {
-    mode: 'cors',
-    headers: { Accept: 'application/json' },
-  });
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-  return response.json();
+async function requestAircraftPayload(url, { timeoutMs = RELAY_REQUEST_TIMEOUT_MS } = {}) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      mode: 'cors',
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    return response.json();
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 function normalizePayload(payload, provider, observedAt, latitude, longitude, radius, classification) {
@@ -191,42 +195,26 @@ export async function fetchAircraftSnapshot(latitude, longitude, radiusNm = 250,
   if (!Number.isFinite(lon) || lon < -180 || lon > 180) throw new Error('INVALID AIRCRAFT QUERY LONGITUDE');
 
   const observedAt = new Date().toISOString();
-  const pointPath = `/point/${lat.toFixed(4)}/${lon.toFixed(4)}/${radius}`;
   const relayBase = getRelayBase();
-  const providers = [];
-
-  if (relayBase) {
-    providers.push(['GEV RELAY', `${relayBase}/aircraft?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&radius=${radius}&mode=${mode}`]);
-  }
-
-  if (mode === 'military') {
-    providers.push(['ADSB.LOL // MILITARY', `${ADSB_API_BASE}/mil`]);
-  } else {
-    providers.push(
-      ['ADSB.LOL', `${ADSB_API_BASE}${pointPath}`],
-      ['AIRPLANES.LIVE', `${AIRPLANES_LIVE_API_BASE}${pointPath}`],
-    );
-  }
-
   const providerErrors = [];
-  const lastProvider = providers[providers.length - 1]?.[0];
 
-  for (const [provider, url] of providers) {
+  // The browser must not bypass the relay. Direct public ADS-B requests can
+  // stall or be rejected by CORS/rate limits and were making the mobile UI
+  // appear frozen after a relay failure.
+  if (relayBase) {
+    const url = `${relayBase}/aircraft?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&radius=${radius}&mode=${mode}`;
     try {
       const payload = await requestAircraftPayload(url);
-      const result = normalizePayload(payload, payload?.provider || provider, observedAt, lat, lon, radius, mode);
-      if (shouldAcceptAircraftResult(provider, result.aircraft.length, lastProvider)) {
-        return result;
-      }
+      return normalizePayload(payload, payload?.provider || 'GEV RELAY', observedAt, lat, lon, radius, mode);
     } catch (error) {
-      const message = String(error?.message || error || 'request failed');
-      providerErrors.push({ provider, message });
-      console.warn(`[GEV] ${provider} ${mode} aircraft request failed`, error);
+      const message = error?.name === 'AbortError'
+        ? 'RELAY REQUEST TIMEOUT'
+        : String(error?.message || error || 'request failed');
+      providerErrors.push({ provider: 'GEV RELAY', message });
     }
+
+    throw new Error(formatAircraftProviderErrors(providerErrors));
   }
 
-  const detail = formatAircraftProviderErrors(providerErrors);
-  if (detail) throw new Error(detail);
-  if (relayBase) throw new Error(`AIRCRAFT ${mode.toUpperCase()} RELAY UNAVAILABLE`);
-  throw new Error('AIRCRAFT RELAY NOT CONFIGURED // DIRECT PROVIDERS ARE BROWSER-BLOCKED');
+  throw new Error('AIRCRAFT RELAY NOT CONFIGURED');
 }
