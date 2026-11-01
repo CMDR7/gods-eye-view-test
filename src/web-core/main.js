@@ -318,8 +318,6 @@ async function loadAircraft(classification, layerId) {
     for (const staleEntity of existingMobileAircraft.values()) entities.remove(staleEntity);
   }
 
-  // Keep selection/tracking stable across a coverage refresh when the same
-  // transponder is still inside the returned aperture query.
   if (selectedId !== null) {
     const replacement = entities.values.find(
       (entity) => String(entity.gevMeta?.id) === String(selectedId),
@@ -522,7 +520,7 @@ function addCoordinateNavigation() {
   const parse = () => { const lat = Number.parseFloat($('coordinateLat').value); const lon = Number.parseFloat($('coordinateLon').value); const altRaw = $('coordinateAlt').value.trim(); const altitude = altRaw === '' ? DEFAULT_NAV_ALTITUDE : Number.parseFloat(altRaw); if (!Number.isFinite(lat) || lat < -90 || lat > 90) return { error: 'LATITUDE MUST BE BETWEEN -90 AND 90' }; if (!Number.isFinite(lon) || lon < -180 || lon > 180) return { error: 'LONGITUDE MUST BE BETWEEN -180 AND 180' }; if (!Number.isFinite(altitude) || altitude < 0) return { error: 'ALTITUDE MUST BE ZERO OR GREATER' }; return { lat, lon, altitude }; };
   const fly = () => { const result = parse(); if (result.error) { setStatus(`NAVIGATION INPUT ERROR // ${result.error}`, 'warn'); return; } state.viewer.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(result.lon, result.lat, result.altitude), orientation: { heading: 0, pitch: Cesium.Math.toRadians(-35), roll: 0 }, duration: 1.5 }); setStatus(`NAVIGATION LOCK // ${result.lat.toFixed(5)} ${result.lon.toFixed(5)}`, 'ok'); };
   $('coordinateFly')?.addEventListener('click', fly); $('coordinateAlt')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') fly(); }); $('coordinateLat')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') fly(); }); $('coordinateLon')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') fly(); });
-  $('coordinateMyLocation')?.addEventListener('click', () => { if (!navigator.geolocation) { setStatus('LOCATION API UNAVAILABLE', 'warn'); return; } navigator.geolocation.getCurrentPosition((position) => { $('coordinateLat').value = position.coords.latitude.toFixed(6); $('coordinateLon').value = position.coords.longitude.toFixed(6); setStatus('CURRENT LOCATION ACQUIRED', 'ok'); }, () => setStatus('CURRENT LOCATION UNAVAILABLE', 'warn'), { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+  $('coordinateMyLocation')?.addEventListener('click', () => { if (!navigator.geolocation) { setStatus('LOCATION API UNAVAILABLE', 'warn'); return; } navigator.geolocation.getCurrentPosition((position) => { $('coordinateLat').value = position.coords.latitude.toFixed(6); $('coordinateLon').value = position.coords.longitude.toFixed(6); setStatus('CURRENT LOCATION ACQUIRED', 'ok'); }, () => setStatus('CURRENT LOCATION UNAVAILABLE', 'warn'), { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }); });
   $('coordinateCopy')?.addEventListener('click', () => { const value = `${$('coordinateLat').value}, ${$('coordinateLon').value}`; navigator.clipboard?.writeText(value).then(() => setStatus('COORDINATES COPIED', 'ok')).catch(() => setStatus('CLIPBOARD UNAVAILABLE', 'warn')); });
 }
 function addLayerControls() {
@@ -553,7 +551,6 @@ async function initialize() {
   viewer.scene.requestRenderMode = false;
   viewer.imageryLayers.addImageryProvider(createOsmImagery());
   viewer.camera.setView({ destination: Cesium.Cartesian3.fromDegrees(10, 50, 3_500_000), orientation: { heading: 0, pitch: Cesium.Math.toRadians(-60), roll: 0 } });
-  // The scope is presentation-only; Cesium remains the owner of camera and target state.
   installScopeMask(viewer);
   window.addEventListener('pagehide', destroyScopeMask);
   window.addEventListener('pageshow', (event) => {
