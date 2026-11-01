@@ -5,6 +5,7 @@ const KNOTS_TO_MPS = 0.5144444444;
 const FEET_PER_MIN_TO_MPS = FEET_TO_METERS / 60;
 const EARTH_RADIUS_KM = 6371;
 const NM_TO_KM = 1.852;
+const MOBILE_NORMALIZATION_LIMIT = 60;
 
 function finiteNumber(value) {
   const numeric = Number(value);
@@ -162,11 +163,22 @@ async function requestAircraftPayload(url) {
 }
 
 function normalizePayload(payload, provider, observedAt, latitude, longitude, radius, classification) {
-  const aircraft = (payload?.ac ?? [])
-    .map((raw) => normalizeAircraft(raw, observedAt, classification))
-    .filter((item) => Number.isFinite(item.position.latitude) && Number.isFinite(item.position.longitude))
-    .filter((item) => distanceNm(latitude, longitude, item.position.latitude, item.position.longitude) <= radius)
-    .filter((item) => classification === 'military' || !item.flags.military);
+  const mobile = window.matchMedia?.('(pointer: coarse), (max-width: 600px)')?.matches === true;
+  const limit = mobile ? MOBILE_NORMALIZATION_LIMIT : Number.POSITIVE_INFINITY;
+  const aircraft = [];
+
+  for (const raw of payload?.ac ?? []) {
+    if (aircraft.length >= limit) break;
+
+    const rawLatitude = finiteNumber(raw?.lat);
+    const rawLongitude = finiteNumber(raw?.lon);
+    if (rawLatitude === null || rawLongitude === null) continue;
+    if (classification !== 'military' && (booleanFlag(raw?.mil) || booleanFlag(raw?.military))) continue;
+    if (distanceNm(latitude, longitude, rawLatitude, rawLongitude) > radius) continue;
+
+    aircraft.push(normalizeAircraft(raw, observedAt, classification));
+  }
+
   return { observedAt, latitude, longitude, radiusNm: radius, provider, classification, aircraft };
 }
 
