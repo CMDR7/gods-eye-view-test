@@ -4,6 +4,7 @@ import './mobile-ui.css';
 const GLYPH_SIZE = 64;
 const DEFAULT_SCALE = 0.72;
 const SELECTED_SCALE = 1.15;
+const MOBILE_AIRCRAFT_MODE = window.matchMedia?.('(pointer: coarse), (max-width: 600px)')?.matches === true;
 
 const COLORS = {
   civilian: '#00eaff',
@@ -83,6 +84,19 @@ function headingFor(entity) {
 function patchAircraftEntity(entity) {
   if (!entity?.gevMeta || entity.gevMeta.type !== 'AIRCRAFT') return;
 
+  // Android/mobile browsers use Cesium points here. BillboardGraphics create a
+  // significantly heavier scene path and were the remaining freeze candidate
+  // after acquisition and entity-count limits were applied.
+  if (MOBILE_AIRCRAFT_MODE) {
+    if (entity.point) {
+      entity.point.show = true;
+      entity.point.pixelSize = 7;
+      entity.point.outlineWidth = 1;
+    }
+    if (entity.label) entity.label.show = false;
+    return;
+  }
+
   const classification = entity.gevMeta.classification === 'military' ? 'military' : 'civilian';
   const color = COLORS[classification];
 
@@ -121,7 +135,20 @@ function syncSelection(layers) {
   const selectedId = selectedTargetId();
   for (const layer of layers) {
     for (const entity of layer.entities.values) {
-      if (!entity?.gevMeta || entity.gevMeta.type !== 'AIRCRAFT' || !entity.billboard?.__gevAircraftDirectional) continue;
+      if (!entity?.gevMeta || entity.gevMeta.type !== 'AIRCRAFT') continue;
+
+      if (MOBILE_AIRCRAFT_MODE) {
+        const id = String(entity.gevMeta.id ?? entity.id ?? '');
+        const selected = Boolean(selectedId && id === selectedId);
+        if (entity.point) {
+          entity.point.pixelSize = selected ? 11 : 7;
+          entity.point.outlineColor = selected ? Cesium.Color.CYAN : Cesium.Color.BLACK;
+          entity.point.outlineWidth = selected ? 2 : 1;
+        }
+        continue;
+      }
+
+      if (!entity.billboard?.__gevAircraftDirectional) continue;
       const id = String(entity.gevMeta.id ?? entity.id ?? '');
       const selected = Boolean(selectedId && id === selectedId);
       entity.billboard.scale = selected ? SELECTED_SCALE : DEFAULT_SCALE;
