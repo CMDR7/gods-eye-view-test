@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import './mobile-ui.css';
 
 const GLYPH_SIZE = 64;
 const DEFAULT_SCALE = 0.72;
