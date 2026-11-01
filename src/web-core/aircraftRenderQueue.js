@@ -1,8 +1,14 @@
 export const MAX_AIRCRAFT_RENDER_COUNT = 100;
+export const MOBILE_AIRCRAFT_RENDER_COUNT = 50;
 export const AIRCRAFT_RENDER_BATCH_SIZE = 20;
 
 function yieldToRenderLoop() {
   return new Promise((resolve) => requestAnimationFrame(resolve));
+}
+
+function getAircraftRenderBudget() {
+  const mobile = window.matchMedia?.('(pointer: coarse), (max-width: 600px)')?.matches;
+  return mobile ? MOBILE_AIRCRAFT_RENDER_COUNT : MAX_AIRCRAFT_RENDER_COUNT;
 }
 
 /**
@@ -31,7 +37,7 @@ export async function renderAircraftInBatches({
     throw new TypeError('An aircraft renderer callback is required');
   }
 
-  const admitted = aircraft.slice(0, MAX_AIRCRAFT_RENDER_COUNT);
+  const admitted = aircraft.slice(0, getAircraftRenderBudget());
   let rendered = 0;
   let processed = 0;
 
