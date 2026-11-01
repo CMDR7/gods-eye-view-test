@@ -1,6 +1,6 @@
 export const MAX_AIRCRAFT_RENDER_COUNT = 100;
-export const MOBILE_AIRCRAFT_RENDER_COUNT = 50;
-export const AIRCRAFT_RENDER_BATCH_SIZE = 20;
+export const MOBILE_AIRCRAFT_RENDER_COUNT = 24;
+export const AIRCRAFT_RENDER_BATCH_SIZE = 12;
 
 function yieldToRenderLoop() {
   return new Promise((resolve) => requestAnimationFrame(resolve));
