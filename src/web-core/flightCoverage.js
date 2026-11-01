@@ -10,6 +10,7 @@ const EARTH_RADIUS_KM = 6371;
 const KM_PER_NM = 1.852;
 const DEFAULT_BOUNDARY_SAMPLES = 16;
 const MIN_VALID_BOUNDARY_SAMPLES = 4;
+const MOBILE_COVERAGE_FALLBACK_RADIUS_NM = 75;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -22,6 +23,10 @@ function isValidCoordinate(point) {
     && Number.isFinite(point?.longitude)
     && point.longitude >= -180
     && point.longitude <= 180;
+}
+
+function isMobileViewport() {
+  return window.matchMedia?.('(pointer: coarse), (max-width: 600px)')?.matches === true;
 }
 
 export function distanceNm(first, second) {
@@ -37,10 +42,6 @@ export function distanceNm(first, second) {
   return (EARTH_RADIUS_KM * centralAngle) / KM_PER_NM;
 }
 
-/**
- * Derive a conservative circle around the focal point from valid aperture-edge
- * intersections. Sparse/horizon-clipped samples use a documented fallback.
- */
 export function computeAircraftCoverageRadiusNm(
   focalPoint,
   boundaryPoints,
@@ -76,10 +77,15 @@ export function computeAircraftCoverageRadiusNm(
   return clamp(Math.ceil(farthest * marginFactor), minimum, maximum);
 }
 
-function pickSurfacePoint(scene, camera, x, y) {
+function pickSurfacePoint(scene, camera, x, y, { useTerrain = true } = {}) {
   const position = new Cesium.Cartesian2(x, y);
-  const ray = camera.getPickRay?.(position);
-  let cartesian = ray ? scene.globe?.pick?.(ray, scene) : undefined;
+  let cartesian;
+
+  if (useTerrain) {
+    const ray = camera.getPickRay?.(position);
+    cartesian = ray ? scene.globe?.pick?.(ray, scene) : undefined;
+  }
+
   if (!Cesium.defined(cartesian)) {
     cartesian = camera.pickEllipsoid?.(
       position,
@@ -96,10 +102,6 @@ function pickSurfacePoint(scene, camera, x, y) {
   return isValidCoordinate(point) ? point : null;
 }
 
-/**
- * Resolve a geographic focal point and acquisition radius from the same
- * circular aperture used by the scope mask and keyhole-aligned overlays.
- */
 export function getAircraftApertureCoverage(
   viewer,
   { sampleCount = DEFAULT_BOUNDARY_SAMPLES } = {},
@@ -113,6 +115,22 @@ export function getAircraftApertureCoverage(
 
   const geometry = getKeyholeGeometry(width, height);
   if (!(geometry.radius > 0)) return null;
+
+  // Mobile browsers were doing a synchronous terrain pick for the focal point
+  // plus 16 more terrain picks around the aperture before the aircraft request
+  // even started. Keep the original adaptive coverage on desktop, but use one
+  // ellipsoid pick and a conservative fixed radius on touch/mobile devices.
+  if (isMobileViewport()) {
+    const focalPoint = pickSurfacePoint(scene, camera, geometry.centerX, geometry.centerY, {
+      useTerrain: false,
+    });
+    if (!focalPoint) return null;
+    return {
+      ...focalPoint,
+      radiusNm: MOBILE_COVERAGE_FALLBACK_RADIUS_NM,
+      boundarySampleCount: 0,
+    };
+  }
 
   const focalPoint = pickSurfacePoint(scene, camera, geometry.centerX, geometry.centerY);
   if (!focalPoint) return null;
