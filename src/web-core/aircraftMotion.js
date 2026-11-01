@@ -4,6 +4,7 @@ const MOTION_CAP_SECONDS = 75;
 const EARTH_RADIUS_M = 6_378_137;
 const DEG_TO_RAD = Math.PI / 180;
 const RAD_TO_DEG = 180 / Math.PI;
+const MOBILE_MOTION_DISABLED = window.matchMedia?.('(pointer: coarse), (max-width: 600px)')?.matches === true;
 
 function destinationFromVector(latitudeDeg, longitudeDeg, altitudeM, distanceM, bearingDeg, verticalRateMps, elapsedSeconds) {
   const latitude = latitudeDeg * DEG_TO_RAD;
@@ -35,6 +36,7 @@ export function attachAircraftMotion(entity) {
   const meta = entity?.gevMeta;
   const position = meta?.position;
   const motion = meta?.motion;
+  if (MOBILE_MOTION_DISABLED) return;
   if (!entity || meta?.type !== 'AIRCRAFT' || !position || !motion || entity.__gevAircraftMotion) return;
   if (![position.latitude, position.longitude, position.altitudeBarometricM, motion.groundSpeedMps, motion.trackDeg]
     .every((value) => Number.isFinite(Number(value)))) return;
