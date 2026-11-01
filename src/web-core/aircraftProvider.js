@@ -197,12 +197,14 @@ export async function fetchAircraftSnapshot(latitude, longitude, radiusNm = 250,
   const observedAt = new Date().toISOString();
   const relayBase = getRelayBase();
   const providerErrors = [];
+  const mobile = window.matchMedia?.('(pointer: coarse), (max-width: 600px)')?.matches === true;
 
   // The browser must not bypass the relay. Direct public ADS-B requests can
   // stall or be rejected by CORS/rate limits and were making the mobile UI
   // appear frozen after a relay failure.
   if (relayBase) {
-    const url = `${relayBase}/aircraft?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&radius=${radius}&mode=${mode}`;
+    const mobileLimit = mobile ? `&limit=${MOBILE_NORMALIZATION_LIMIT}` : '';
+    const url = `${relayBase}/aircraft?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&radius=${radius}&mode=${mode}${mobileLimit}`;
     try {
       const payload = await requestAircraftPayload(url);
       return normalizePayload(payload, payload?.provider || 'GEV RELAY', observedAt, lat, lon, radius, mode);
