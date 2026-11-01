@@ -19,6 +19,7 @@ const DEFAULT_NAV_ALTITUDE = 15_000;
 const SATELLITE_CACHE_KEY = 'gev.celestrak.visualTle.v1';
 const SATELLITE_CACHE_TTL_MS = SATELLITE_REFRESH_MS;
 const SATELLITE_COLLECTION_KEY = '__gevSatellitePointCollection';
+const MOBILE_AIRCRAFT_MODE = window.matchMedia?.('(pointer: coarse), (max-width: 600px)')?.matches === true;
 
 const state = {
   viewer: null,
@@ -103,6 +104,43 @@ function addPoint(layer, lon, lat, height, label, color, pixelSize = 7, metadata
   };
   entity.gevVisual = { color, pixelSize };
   return entity;
+}
+
+function updateMobileAircraftEntity(entity, layer, aircraft, snapshot, color) {
+  const lon = aircraft.position.longitude;
+  const lat = aircraft.position.latitude;
+  if (
+    !Number.isFinite(lon) || lon < -180 || lon > 180 ||
+    !Number.isFinite(lat) || lat < -90 || lat > 90
+  ) return false;
+
+  const altitude = aircraft.position.altitudeBarometricM ?? aircraft.position.altitudeGeometricM ?? 500;
+  const callsign = aircraft.identity.callsign || aircraft.identity.icaoHex || 'AIR';
+  const id = aircraft.identity.icaoHex || callsign;
+  const metadata = {
+    layerId: layer.id,
+    type: 'AIRCRAFT', name: callsign, id,
+    source: snapshot.provider, updated: snapshot.observedAt, altitude,
+    classification: layer.id === 'militaryAircraft' ? 'military' : 'civilian',
+    callsign, hex: aircraft.identity.icaoHex || 'UNKNOWN',
+    squawk: aircraft.transponder.squawk || '—',
+    registration: aircraft.identity.registration || '—',
+    category: aircraft.identity.category || '—',
+    aircraft, identity: aircraft.identity, position: aircraft.position,
+    motion: aircraft.motion, navigation: aircraft.navigation, signal: aircraft.signal,
+    integrity: aircraft.integrity, flags: aircraft.flags, transponder: aircraft.transponder,
+    environment: aircraft.environment,
+  };
+
+  entity.position = Cesium.Cartesian3.fromDegrees(lon, lat, altitude);
+  entity.point.color = color;
+  entity.point.pixelSize = 6;
+  entity.point.outlineColor = Cesium.Color.BLACK;
+  entity.point.outlineWidth = 1;
+  if (entity.label) entity.label.text = callsign;
+  entity.gevMeta = { ...entity.gevMeta, ...metadata };
+  entity.gevVisual = { color, pixelSize: 6 };
+  return true;
 }
 
 function syncSatellitePoints(layer) {
@@ -211,7 +249,10 @@ async function loadAircraft(classification, layerId) {
     && state.viewer.trackedEntity === previousSelection;
   if (previousSelection) clearSelectedTarget();
   const entities = layer.dataSource.entities;
-  entities.removeAll();
+  const existingMobileAircraft = MOBILE_AIRCRAFT_MODE
+    ? new Map(entities.values.map((entity) => [String(entity.gevMeta?.id || entity.id), entity]))
+    : null;
+  if (!MOBILE_AIRCRAFT_MODE) entities.removeAll();
 
   const color = classification === 'military' ? Cesium.Color.ORANGE : Cesium.Color.CYAN;
   let renderedCount;
@@ -229,6 +270,16 @@ async function loadAircraft(classification, layerId) {
           !Number.isFinite(lon) || lon < -180 || lon > 180 ||
           !Number.isFinite(lat) || lat < -90 || lat > 90
         ) return false;
+
+        const id = String(aircraft.identity.icaoHex || aircraft.identity.callsign || 'AIR');
+        if (existingMobileAircraft) {
+          const existing = existingMobileAircraft.get(id);
+          if (existing) {
+            existingMobileAircraft.delete(id);
+            return updateMobileAircraftEntity(existing, layer, aircraft, snapshot, color);
+          }
+        }
+
         const altitude = aircraft.position.altitudeBarometricM ?? aircraft.position.altitudeGeometricM ?? 500;
         const callsign = aircraft.identity.callsign || aircraft.identity.icaoHex || 'AIR';
         const entity = addPoint(layer, lon, lat, altitude, callsign, color, 6, {
@@ -248,10 +299,12 @@ async function loadAircraft(classification, layerId) {
       },
     });
   } catch (error) {
-    try {
-      entities.removeAll();
-    } catch (cleanupError) {
-      console.warn('[GEV] Failed to clear partial aircraft snapshot', cleanupError);
+    if (!MOBILE_AIRCRAFT_MODE) {
+      try {
+        entities.removeAll();
+      } catch (cleanupError) {
+        console.warn('[GEV] Failed to clear partial aircraft snapshot', cleanupError);
+      }
     }
     throw error;
   }
@@ -260,6 +313,10 @@ async function loadAircraft(classification, layerId) {
     state.aircraftRequestSequence.get(layerId) !== requestSequence
     || !layer.enabled
   ) return null;
+
+  if (existingMobileAircraft?.size) {
+    for (const staleEntity of existingMobileAircraft.values()) entities.remove(staleEntity);
+  }
 
   // Keep selection/tracking stable across a coverage refresh when the same
   // transponder is still inside the returned aperture query.
@@ -346,7 +403,7 @@ async function refreshLayer(id, loader) {
   } catch (error) {
     console.warn(`[GEV] ${id} unavailable`, error);
     const detail = String(error?.message || error || 'request failed')
-      .replace(/\\s+/g, ' ')
+      .replace(/\s+/g, ' ')
       .slice(0, 72);
     setStatus(
       `${state.layers.get(id).name}: unavailable · ${detail}`,
@@ -465,7 +522,7 @@ function addCoordinateNavigation() {
   const parse = () => { const lat = Number.parseFloat($('coordinateLat').value); const lon = Number.parseFloat($('coordinateLon').value); const altRaw = $('coordinateAlt').value.trim(); const altitude = altRaw === '' ? DEFAULT_NAV_ALTITUDE : Number.parseFloat(altRaw); if (!Number.isFinite(lat) || lat < -90 || lat > 90) return { error: 'LATITUDE MUST BE BETWEEN -90 AND 90' }; if (!Number.isFinite(lon) || lon < -180 || lon > 180) return { error: 'LONGITUDE MUST BE BETWEEN -180 AND 180' }; if (!Number.isFinite(altitude) || altitude < 0) return { error: 'ALTITUDE MUST BE ZERO OR GREATER' }; return { lat, lon, altitude }; };
   const fly = () => { const result = parse(); if (result.error) { setStatus(`NAVIGATION INPUT ERROR // ${result.error}`, 'warn'); return; } state.viewer.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(result.lon, result.lat, result.altitude), orientation: { heading: 0, pitch: Cesium.Math.toRadians(-35), roll: 0 }, duration: 1.5 }); setStatus(`NAVIGATION LOCK // ${result.lat.toFixed(5)} ${result.lon.toFixed(5)}`, 'ok'); };
   $('coordinateFly')?.addEventListener('click', fly); $('coordinateAlt')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') fly(); }); $('coordinateLat')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') fly(); }); $('coordinateLon')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') fly(); });
-  $('coordinateMyLocation')?.addEventListener('click', () => { if (!navigator.geolocation) { setStatus('LOCATION API UNAVAILABLE', 'warn'); return; } navigator.geolocation.getCurrentPosition((position) => { $('coordinateLat').value = position.coords.latitude.toFixed(6); $('coordinateLon').value = position.coords.longitude.toFixed(6); setStatus('CURRENT LOCATION ACQUIRED', 'ok'); }, () => setStatus('CURRENT LOCATION UNAVAILABLE', 'warn'), { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }); });
+  $('coordinateMyLocation')?.addEventListener('click', () => { if (!navigator.geolocation) { setStatus('LOCATION API UNAVAILABLE', 'warn'); return; } navigator.geolocation.getCurrentPosition((position) => { $('coordinateLat').value = position.coords.latitude.toFixed(6); $('coordinateLon').value = position.coords.longitude.toFixed(6); setStatus('CURRENT LOCATION ACQUIRED', 'ok'); }, () => setStatus('CURRENT LOCATION UNAVAILABLE', 'warn'), { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
   $('coordinateCopy')?.addEventListener('click', () => { const value = `${$('coordinateLat').value}, ${$('coordinateLon').value}`; navigator.clipboard?.writeText(value).then(() => setStatus('COORDINATES COPIED', 'ok')).catch(() => setStatus('CLIPBOARD UNAVAILABLE', 'warn')); });
 }
 function addLayerControls() {
