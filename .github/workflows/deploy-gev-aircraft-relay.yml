@@ -1,12 +1,6 @@
 name: Deploy GEV Aircraft Relay
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'worker/**'
-      - '.github/workflows/deploy-gev-aircraft-relay.yml'
   workflow_dispatch:
 
 permissions:
@@ -15,21 +9,11 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: worker
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: worker/package-lock.json
-
-      - name: Deploy Worker
+      - name: Deploy Worker with Wrangler
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
